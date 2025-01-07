@@ -1,0 +1,10 @@
+{
+    "solidity.compileUsingRemoteVersion": "v0.8.24+commit.e11b9ed9",
+    "solidity.defaultCompiler": "localNodeModule",
+    "wake.compiler.solc.remappings": [
+        "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
+        "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+        "ds-test/=lib/forge-std/lib/ds-test/src/",
+        "forge-std/=lib/forge-std/src/"
+    ]
+}
