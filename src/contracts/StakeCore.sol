@@ -24,9 +24,9 @@ contract StakeCore is IStakeCore {
     event Unstake(address indexed staker, uint256 amount, uint256 index);
     event RewardsClaimed(address indexed staker, uint256 amount, uint256 index);
     event BeneficiaryRewardsClaimed(address indexed beneficiary, uint256 amount);
-    event SecurityDeposited(address indexed admin, uint256 amount, uint256 totalSecurity);
-    event SecurityWithdrawn(address indexed admin, uint256 amount, uint256 remainingSecurity);
-    event BeneficiaryInitialized(address indexed admin, address indexed beneficiary);
+    event SecurityDeposited(uint256 amount, uint256 totalSecurity);
+    event SecurityWithdrawn(uint256 amount, uint256 remainingSecurity);
+    event BeneficiaryInitialized(address indexed beneficiary);
     
     struct StakeInfo {
         address owner;
@@ -82,12 +82,14 @@ contract StakeCore is IStakeCore {
         require(_bf != address(0), "Invalid address");
         require(beneficiary.owner == address(0), "Inited");
         beneficiary.owner = _bf;
+        emit BeneficiaryInitialized(_bf);
     }
 
     function depositSecurity(uint256 _amount) external onlyAdmin {
         token.safeTransferFrom(msg.sender, address(this), _amount);
         totalSecurityDeposit += _amount;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
+        emit SecurityDeposited(_amount, totalSecurityDeposit);
     }
 
     function withdrawSecurity(uint256 _amount) external onlyAdmin {
@@ -97,6 +99,7 @@ contract StakeCore is IStakeCore {
         token.safeTransfer(msg.sender, _amount);
         totalSecurityDeposit -= _amount;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
+        emit SecurityWithdrawn(_amount, totalSecurityDeposit);
     }
 
     /// @notice stakers stake tokens, and can stake multiple times
@@ -118,6 +121,7 @@ contract StakeCore is IStakeCore {
             })
         );
         userStakeIndexes[msg.sender].push(stakeRecords.length - 1);
+        emit Stake(msg.sender, _amount, block.timestamp, lockPeriod);
     }
 
     function unstake(uint256 _index) external {
@@ -127,6 +131,7 @@ contract StakeCore is IStakeCore {
         require(!_stake.unstaked, "Already claimed");
         _stake.unstaked = true;
         token.safeTransfer(msg.sender, _stake.amount);
+        emit Unstake(msg.sender, _stake.amount, _index);
     }
 
     function claimRewards(uint256 _index) external {
@@ -141,6 +146,7 @@ contract StakeCore is IStakeCore {
         // toBeClaimed / beneficiaryShare = stakerRewardShare / (100 - stakerRewardShare)
         uint256 beneficiaryShare = (toBeClaimed * (100 - stakerRewardShare)) / stakerRewardShare;
         beneficiary.totalRewards += beneficiaryShare;
+        emit RewardsClaimed(_stake.owner, toBeClaimed, _index);
     }
 
     function claimBeneficiaryRewards() external returns (uint256) {
@@ -148,6 +154,7 @@ contract StakeCore is IStakeCore {
         uint256 rewards = beneficiary.totalRewards - beneficiary.claimedRewards;
         beneficiary.claimedRewards += rewards;
         token.safeTransfer(msg.sender, rewards);
+        emit BeneficiaryRewardsClaimed(msg.sender, rewards);
         return rewards;
     }
 

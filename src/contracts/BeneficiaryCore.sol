@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IStakeCore} from "./StakeCore.sol";
+
 /**
  * @title POS Stake Core Contract
  * @notice
@@ -34,6 +35,14 @@ contract BeneficiaryCore {
     address public admin;
     IStakeCore public stakeCore;
 
+    // Events
+    event ShareholderAdded(address indexed shareholder, uint256 allowance);
+    event SharesSet(address indexed shareholder, uint256 shares);
+    event AllowanceSet(address indexed shareholder, uint256 allowance);
+    event RewardsWithdrawn(address indexed shareholder, uint256 amount);
+    event RewardsCollected(uint256 amount);
+    event RewardsDistributed(uint256 totalRewards);
+
     constructor(IERC20 _token, address _admin, address _stakeCore) {
         require(_admin != address(0), "Admin address can't be zero");
         require(_stakeCore != address(0), "StakeCore address can't be zero");
@@ -54,6 +63,7 @@ contract BeneficiaryCore {
         require(shareholdersInfo[_owner].owner == address(0), "Shareholder already exists");
         shareholders.push(_owner);
         shareholdersInfo[_owner] = ShareholderInfo({owner: _owner, allowance: _allowance, grantedAmount: 0, claimedAmount: 0, share: 0});
+        emit ShareholderAdded(_owner, _allowance);
     }
 
     function setShares(address[] calldata _owners, uint256[] calldata _shares) external onlyAdmin {
@@ -66,6 +76,7 @@ contract BeneficiaryCore {
         for (uint256 i = 0; i < _owners.length; i++) {
             require(shareholdersInfo[_owners[i]].owner != address(0), "Not a shareholder");
             shareholdersInfo[_owners[i]].share = _shares[i];
+            emit SharesSet(_owners[i], _shares[i]);
         }
     }
 
@@ -73,12 +84,14 @@ contract BeneficiaryCore {
         require(shareholdersInfo[_shareHolder].owner != address(0), "Not a shareholder");
         require(_allowance >= shareholdersInfo[_shareHolder].claimedAmount, "Allowance must be greater than claimed amount");
         shareholdersInfo[_shareHolder].allowance = _allowance;
+        emit AllowanceSet(_shareHolder, _allowance);
     }
 
     /// distrubute rewards to shareholders based on their shares
     function withdrawRewards() external returns(uint256) {
         uint256 claimed = stakeCore.claimBeneficiaryRewards();
         distributeRewards(claimed);
+        emit RewardsWithdrawn(msg.sender, claimed);
         return claimed;
     }
 
@@ -88,6 +101,7 @@ contract BeneficiaryCore {
         require(info.grantedAmount > info.claimedAmount, "No rewards");
         token.safeTransfer(msg.sender, info.grantedAmount - info.claimedAmount);
         info.claimedAmount = info.grantedAmount;
+        emit RewardsWithdrawn(msg.sender, info.grantedAmount - info.claimedAmount);
     }
 
     function collect() external onlyAdmin returns(uint256) {
@@ -103,6 +117,7 @@ contract BeneficiaryCore {
         }
         require(balance >= unclaimed, "Not enough token");
         token.safeTransfer(admin, balance - unclaimed);
+        emit RewardsCollected(balance - unclaimed);
         return balance - unclaimed;
     }
 
@@ -127,5 +142,6 @@ contract BeneficiaryCore {
 
             info.grantedAmount += amount;
         }
+        emit RewardsDistributed(totalRewards);
     }
 }
