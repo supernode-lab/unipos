@@ -22,14 +22,16 @@ async function deployAll() {
     
     const Core = await ethers.getContractFactory("StakeCore")
     const BeneficiaryCore = await ethers.getContractFactory("BeneficiaryCore")
-    const tokenAddress = deployer
+    const tokenAddress = '0x46bEE5F8aF3dcff4D6C97993b815785E27cAE80c'
     const lockDays = 180
     const stakerShare = 60
     const installmentCount = 1
     const core = await Core.deploy(tokenAddress,lockDays, stakerShare, installmentCount )
     await core.deployed()
-    const bfc = await BeneficiaryCore.deploy(tokenAddress, deployer, core.address)
+    const bfc = await BeneficiaryCore.deploy(tokenAddress, deployer.address, core.address)
     await bfc.deployed()
+    console.log("Stake Core deployed to:", core.address);
+    console.log("BeneficiaryCore deployed to:", bfc.address);
 }
 deployAll().catch((error) => {
     console.error(error)
