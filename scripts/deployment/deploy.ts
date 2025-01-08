@@ -28,7 +28,7 @@ async function deployAll() {
     const installmentCount = 1
     const core = await Core.deploy(tokenAddress,lockDays, stakerShare, installmentCount )
     await core.deployed()
-    const bfc = await BeneficiaryCore.deploy(tokenAddress, deployer.address, core.address)
+    const bfc = await BeneficiaryCore.deploy(tokenAddress, protocolOwner, core.address)
     await bfc.deployed()
     console.log("Stake Core deployed to:", core.address);
     console.log("BeneficiaryCore deployed to:", bfc.address);
