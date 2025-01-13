@@ -39,7 +39,7 @@ contract SetUp is Test {
         token = new Token();
         // Deploy contracts
         vm.startPrank(admin);
-        core = new StakeCore(token, 182.5 days, 60, 5);
+        core = new StakeCore(token, 180 days, 60, 5);
         beneficiary = new BeneficiaryCore(token, admin, address(core));
         core.initBeneficiary(address(beneficiary));
         token.mint(admin, 1000 ether);

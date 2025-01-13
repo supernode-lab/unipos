@@ -159,13 +159,13 @@ contract StakeCore is IStakeCore {
     }
 
     function getCollateralBySecurityDeposit(uint256 _amount) public view returns (uint256) {
-        // (apy * lockPeriod / 365 days) = x days rewards rate
+        // (apy * lockPeriod / 360 days) = x days rewards rate
         // collateral * (x days rewards rate) = security deposit
-        return (_amount * PRECISION) / ((apy * lockPeriod) / 365 days);
+        return (_amount * PRECISION) / ((apy * lockPeriod) / 360 days);
     }
 
     function getSecurityDepositByCollateral(uint256 _amount) public view returns (uint256) {
-        return (_amount * ((apy * lockPeriod) / 365 days)) / PRECISION;
+        return (_amount * ((apy * lockPeriod) / 360 days)) / PRECISION;
     }
 
     function calculateStakerRewards(uint256 _collataralAmount) public view returns (uint256) {
@@ -185,7 +185,6 @@ contract StakeCore is IStakeCore {
         uint256 elapsedTime = block.timestamp - _stake.startTime;
         // calculate the number of unlocked rewards by installment
         uint256 unlockedPhase = elapsedTime >= lockPeriod ? installmentNum : (elapsedTime * installmentNum) / lockPeriod;
-        // console.log("unlockedPhase", unlockedPhase);
         uint256 unlockedRewardsByInstallment = (totalRewards / installmentNum) * unlockedPhase;
         return unlockedRewardsByInstallment;
     }
