@@ -42,6 +42,11 @@ contract StakeCore is IStakeCore {
         uint256 totalRewards;
         uint256 claimedRewards;
     }
+    struct Provider {
+        address owner;
+        address pendingOwner;
+    }
+
     uint256 public constant PRECISION = 1e18;
     IERC20 public immutable token;
     uint256 public immutable lockPeriod;
@@ -62,12 +67,16 @@ contract StakeCore is IStakeCore {
 
     address public admin;
     BeneficiaryInfo public beneficiary;
+    Provider public provider;
 
-    constructor(IERC20 _token, uint256 lockDays, uint256 stakerShares, uint256 installmentCount) {
+    constructor(IERC20 _token, address _provider, uint256 lockDays, uint256 stakerShares, uint256 _apy, uint256 installmentCount) {
+        require(address(_token) != address(0), "Invalid Token address");
+        require(_provider != address(0), "Invalid provider address");
         token = _token;
+        provider.owner = _provider;
         lockPeriod = lockDays;
         stakerRewardShare = stakerShares; // percentage, based on 100
-        apy = (200 * PRECISION) / 100;
+        apy = (_apy * PRECISION) / 100;
         minStakeAmount = 100 * 1e18;
         admin = msg.sender;
         installmentNum = installmentCount;
@@ -77,6 +86,21 @@ contract StakeCore is IStakeCore {
         require(msg.sender == admin, "Only admin can call this function");
         _;
     }
+    modifier onlyProvider() {
+        require(msg.sender == provider.owner, "Only provider can call this function");
+        _;
+    }
+
+    function transferProviderOwnership(address _newProvider) external onlyProvider {
+        provider.pendingOwner = _newProvider;
+    }
+
+    function acceptProviderOwnership() external {
+        require(msg.sender == provider.pendingOwner, "Only pending owner can accept ownership");
+        provider.owner = provider.pendingOwner;
+        provider.pendingOwner = address(0);
+    }
+
 
     function initBeneficiary(address _bf) external onlyAdmin {
         require(_bf != address(0), "Invalid address");
@@ -85,14 +109,14 @@ contract StakeCore is IStakeCore {
         emit BeneficiaryInitialized(_bf);
     }
 
-    function depositSecurity(uint256 _amount) external onlyAdmin {
+    function depositSecurity(uint256 _amount) external onlyProvider {
         token.safeTransferFrom(msg.sender, address(this), _amount);
         totalSecurityDeposit += _amount;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
         emit SecurityDeposited(_amount, totalSecurityDeposit);
     }
 
-    function withdrawSecurity(uint256 _amount) external onlyAdmin {
+    function withdrawSecurity(uint256 _amount) external onlyProvider {
         uint256 remainingCollateral = requiredCollateral - totalCollateral;
         uint256 withdrawnableSecurityDeposit = getSecurityDepositByCollateral(remainingCollateral);
         require(withdrawnableSecurityDeposit >= _amount, "No enough balance");

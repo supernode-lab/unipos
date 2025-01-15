@@ -21,6 +21,7 @@ contract SetUp is Test {
     Token public token;
     address public owner = address(this);
     address public admin = getAddressFromString("setup_Admin");
+    address public provider = getAddressFromString("setup_Provider");
     address public holder1 = getAddressFromString("setup_Holder1");
     address public holder2 = getAddressFromString("setup_Holder2");
     address public staker1 = getAddressFromString("setup_Staker1");
@@ -39,12 +40,13 @@ contract SetUp is Test {
         token = new Token();
         // Deploy contracts
         vm.startPrank(admin);
-        core = new StakeCore(token, 180 days, 60, 5);
+        core = new StakeCore(token, provider, 180 days, 60, 200, 5);
         beneficiary = new BeneficiaryCore(token, admin, address(core));
         core.initBeneficiary(address(beneficiary));
         token.mint(admin, 1000 ether);
         token.mint(staker1, 1000 ether);
         token.mint(staker2, 1000 ether);
+        token.mint(provider, 1000 ether);
         vm.stopPrank();
     }
 
@@ -54,7 +56,7 @@ contract SetUp is Test {
     }
 
     function _testDeposit() public {
-        vm.startPrank(admin);
+        vm.startPrank(provider);
         token.approve(address(core), INITIAL_STAKE);
         core.depositSecurity(INITIAL_STAKE);
         vm.stopPrank();
