@@ -67,14 +67,14 @@ contract BeneficiaryCore {
     }
 
     function setShares(address[] calldata _owners, uint256[] calldata _shares) external onlyAdmin {
-        require(_owners.length == _shares.length, "Owners and shares length must be equal");
+        require(_owners.length == _shares.length && shareholders.length == _owners.length, "Must include all shareholders");
         uint256 totalShares;
         for (uint256 i = 0; i < _owners.length; i++) {
+            require(shareholdersInfo[_owners[i]].owner != address(0), "Not a shareholder");
             totalShares += _shares[i];
         }
         require(totalShares <= 100, "Total shares must be 100");
         for (uint256 i = 0; i < _owners.length; i++) {
-            require(shareholdersInfo[_owners[i]].owner != address(0), "Not a shareholder");
             shareholdersInfo[_owners[i]].share = _shares[i];
             emit SharesSet(_owners[i], _shares[i]);
         }
@@ -99,9 +99,10 @@ contract BeneficiaryCore {
         ShareholderInfo storage info = shareholdersInfo[msg.sender];
         require(info.owner == msg.sender, "Not a shareholder");
         require(info.grantedAmount > info.claimedAmount, "No rewards");
-        token.safeTransfer(msg.sender, info.grantedAmount - info.claimedAmount);
+        uint256 claimed = info.grantedAmount - info.claimedAmount;
         info.claimedAmount = info.grantedAmount;
-        emit RewardsWithdrawn(msg.sender, info.grantedAmount - info.claimedAmount);
+        token.safeTransfer(msg.sender, claimed);
+        emit RewardsWithdrawn(msg.sender, claimed);
     }
 
     function collect() external onlyAdmin returns(uint256) {
@@ -131,6 +132,7 @@ contract BeneficiaryCore {
         }
     }
 
+    // There won't be too many shareholders
     function distributeRewards(uint256 totalRewards) internal {
         for (uint256 i = 0; i < shareholders.length; i++) {
             address shareholder = shareholders[i];

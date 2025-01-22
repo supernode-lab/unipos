@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 // import "forge-std/console.sol";
 
@@ -15,7 +16,7 @@ interface IStakeCore {
  * @title POS Stake Core Contract
  * @notice
  */
-contract StakeCore is IStakeCore {
+contract StakeCore is IStakeCore, ReentrancyGuard{
     using SafeERC20 for IERC20;
     using Math for uint256;
 
@@ -109,20 +110,20 @@ contract StakeCore is IStakeCore {
         emit BeneficiaryInitialized(_bf);
     }
 
-    function depositSecurity(uint256 _amount) external onlyProvider {
-        token.safeTransferFrom(msg.sender, address(this), _amount);
+    function depositSecurity(uint256 _amount) external onlyProvider nonReentrant {
         totalSecurityDeposit += _amount;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
+        token.safeTransferFrom(msg.sender, address(this), _amount);
         emit SecurityDeposited(_amount, totalSecurityDeposit);
     }
 
-    function withdrawSecurity(uint256 _amount) external onlyProvider {
+    function withdrawSecurity(uint256 _amount) external onlyProvider nonReentrant {
         uint256 remainingCollateral = requiredCollateral - totalCollateral;
         uint256 withdrawnableSecurityDeposit = getSecurityDepositByCollateral(remainingCollateral);
         require(withdrawnableSecurityDeposit >= _amount, "No enough balance");
-        token.safeTransfer(msg.sender, _amount);
         totalSecurityDeposit -= _amount;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
+        token.safeTransfer(msg.sender, _amount);
         emit SecurityWithdrawn(_amount, totalSecurityDeposit);
     }
 
