@@ -69,12 +69,12 @@ contract StakeCore is IStakeCore {
     BeneficiaryInfo public beneficiary;
     Provider public provider;
 
-    constructor(IERC20 _token, address _provider, uint256 lockDays, uint256 stakerShares, uint256 _apy, uint256 installmentCount) {
+    constructor(IERC20 _token, address _provider, uint256 _lockPeriod, uint256 stakerShares, uint256 _apy, uint256 installmentCount) {
         require(address(_token) != address(0), "Invalid Token address");
         require(_provider != address(0), "Invalid provider address");
         token = _token;
         provider.owner = _provider;
-        lockPeriod = lockDays;
+        lockPeriod = _lockPeriod;
         stakerRewardShare = stakerShares; // percentage, based on 100
         apy = (_apy * PRECISION) / 100;
         minStakeAmount = 100 * 1e18;
