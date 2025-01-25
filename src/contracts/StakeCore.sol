@@ -16,11 +16,11 @@ interface IStakeCore {
  * @title POS Stake Core Contract
  * @notice
  */
-contract StakeCore is IStakeCore, ReentrancyGuard{
+contract StakeCore is IStakeCore, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Math for uint256;
 
-      // Events
+    // Events
     event Stake(address indexed staker, uint256 amount, uint256 startTime, uint256 lockPeriod);
     event Unstake(address indexed staker, uint256 amount, uint256 index);
     event RewardsClaimed(address indexed staker, uint256 amount, uint256 index);
@@ -28,7 +28,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard{
     event SecurityDeposited(uint256 amount, uint256 totalSecurity);
     event SecurityWithdrawn(uint256 amount, uint256 remainingSecurity);
     event BeneficiaryInitialized(address indexed beneficiary);
-    
+    event CollectExtra(uint256 extraToken);
+
     struct StakeInfo {
         address owner;
         uint256 amount;
@@ -58,6 +59,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard{
 
     // total user staked amount
     uint256 public totalCollateral;
+    uint256 public unstakedCollateral;
+    uint256 public totalClaimedRewards;
     // total security deposit amount
     uint256 public totalSecurityDeposit;
     // total required stake amount
@@ -101,7 +104,6 @@ contract StakeCore is IStakeCore, ReentrancyGuard{
         provider.owner = provider.pendingOwner;
         provider.pendingOwner = address(0);
     }
-
 
     function initBeneficiary(address _bf) external onlyAdmin {
         require(_bf != address(0), "Invalid address");
@@ -155,6 +157,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard{
         require(block.timestamp >= _stake.startTime + _stake.lockPeriod, "Lock period not ended");
         require(!_stake.unstaked, "Already claimed");
         _stake.unstaked = true;
+        unstakedCollateral += _stake.amount;
         token.safeTransfer(msg.sender, _stake.amount);
         emit Unstake(msg.sender, _stake.amount, _index);
     }
@@ -167,6 +170,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard{
         uint256 toBeClaimed = totalUnlocked - _stake.claimedRewards;
         _stake.claimedRewards += toBeClaimed;
         _stake.lockedRewards -= toBeClaimed;
+        totalClaimedRewards += toBeClaimed;
         token.safeTransfer(_stake.owner, toBeClaimed);
         // toBeClaimed / beneficiaryShare = stakerRewardShare / (100 - stakerRewardShare)
         uint256 beneficiaryShare = (toBeClaimed * (100 - stakerRewardShare)) / stakerRewardShare;
@@ -178,9 +182,22 @@ contract StakeCore is IStakeCore, ReentrancyGuard{
         require(beneficiary.owner == msg.sender, "Not Beneficiary");
         uint256 rewards = beneficiary.totalRewards - beneficiary.claimedRewards;
         beneficiary.claimedRewards += rewards;
+        totalClaimedRewards += rewards;
         token.safeTransfer(msg.sender, rewards);
         emit BeneficiaryRewardsClaimed(msg.sender, rewards);
         return rewards;
+    }
+
+    // collect the locked token for admin
+    function collect() external onlyAdmin returns (uint256) {
+        require(
+            totalCollateral + totalSecurityDeposit < token.balanceOf(address(this)) + unstakedCollateral + totalClaimedRewards,
+            "No locked token"
+        );
+        uint256 extraToken = token.balanceOf(address(this)) - (totalCollateral + totalSecurityDeposit - unstakedCollateral - totalClaimedRewards);
+        token.safeTransfer(provider.owner, extraToken);
+        emit CollectExtra(extraToken);
+        return extraToken;
     }
 
     function getCollateralBySecurityDeposit(uint256 _amount) public view returns (uint256) {
