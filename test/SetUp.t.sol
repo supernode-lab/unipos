@@ -27,7 +27,7 @@ contract SetUp is Test {
     address public staker1 = getAddressFromString("setup_Staker1");
     address public staker2 = getAddressFromString("setup_Staker2");
     address[] public holders = [holder1, holder2, admin];
-    uint256[] public shares = [25,25, 50];
+    uint256[] public shares = [25, 25, 50];
 
     uint256 public constant INITIAL_STAKE = 200 ether;
     uint256 constant PRICE_PRECISION = 1e18;
@@ -108,7 +108,7 @@ contract SetUp is Test {
         vm.startPrank(admin);
         beneficiary.addShareholder(holder1, 10 ether);
         beneficiary.addShareholder(holder2, 30 ether);
-        beneficiary.setShares(holders,shares);
+        beneficiary.setShares(holders, shares);
         uint256 received = beneficiary.withdrawRewards();
         console.log("received", received / 1e18);
         assertEq(received, 80 ether, "receive 80");
@@ -120,9 +120,15 @@ contract SetUp is Test {
         beneficiary.claimRewards();
         vm.assertEq(token.balanceOf(holder1) - preBalance, 10 ether);
     }
-
-    function testAll() public {
+    function _testCollect() public {
         _testBeneficiary();
+        vm.startPrank(admin);
+        token.transfer(address(core), 1 ether);
+        uint256 _extra = core.collect();
+        vm.assertEq(_extra, 1 ether);
     }
 
+    function testAll() public {
+        _testCollect();
+    }
 }
