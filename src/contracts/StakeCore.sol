@@ -3,13 +3,32 @@ pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 // import "forge-std/console.sol";
 
 interface IStakeCore {
+    struct StakeInfo {
+        address owner;
+        uint256 amount;
+        uint256 startTime;
+        uint256 lockPeriod;
+        uint256 claimedRewards;
+        uint256 lockedRewards;
+        bool unstaked;
+    }
+
     function claimBeneficiaryRewards() external returns (uint256);
+
+    function claimRewards(uint256) external returns (uint256);
+
+    function getUserStakeIndexes(address) external returns (uint256[]memory);
+
+    function getStakeRecords(uint256) external returns (StakeInfo memory);
+
+    function unstake(uint256) external returns (uint256);
 }
 
 /**
@@ -30,20 +49,13 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     event BeneficiaryInitialized(address indexed beneficiary);
     event CollectExtra(uint256 extraToken);
 
-    struct StakeInfo {
-        address owner;
-        uint256 amount;
-        uint256 startTime;
-        uint256 lockPeriod;
-        uint256 claimedRewards;
-        uint256 lockedRewards;
-        bool unstaked;
-    }
+
     struct BeneficiaryInfo {
         address owner;
         uint256 totalRewards;
         uint256 claimedRewards;
     }
+
     struct Provider {
         address owner;
         address pendingOwner;
@@ -66,8 +78,18 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     // total required stake amount
     uint256 public requiredCollateral;
 
-    StakeInfo[] public stakeRecords;
+    IStakeCore.StakeInfo[] internal stakeRecords;
     mapping(address => uint256[]) public userStakeIndexes; // 每个用户的质押记录
+
+
+    function getStakeRecords(uint256 _index) external returns (StakeInfo memory){
+        return stakeRecords[_index];
+    }
+
+    function getUserStakeIndexes(address owner) external returns (uint256[]memory){
+        return userStakeIndexes[owner];
+    }
+
 
     address public admin;
     BeneficiaryInfo public beneficiary;
@@ -130,7 +152,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     }
 
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(uint256 _amount) external {
+    function stake(address owner, uint256 _amount) external {
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
         require(totalCollateral + _amount <= requiredCollateral, "No enough allowance");
@@ -138,7 +160,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         totalCollateral += _amount;
         stakeRecords.push(
             StakeInfo({
-                owner: msg.sender,
+                owner: owner,
                 amount: _amount,
                 startTime: block.timestamp,
                 lockPeriod: lockPeriod,
@@ -147,24 +169,26 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
                 unstaked: false
             })
         );
-        userStakeIndexes[msg.sender].push(stakeRecords.length - 1);
-        emit Stake(msg.sender, _amount, block.timestamp, lockPeriod);
+        userStakeIndexes[owner].push(stakeRecords.length - 1);
+        emit Stake(owner, _amount, block.timestamp, lockPeriod);
     }
 
-    function unstake(uint256 _index) external {
+    function unstake(uint256 _index) external returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         require(block.timestamp >= _stake.startTime + _stake.lockPeriod, "Lock period not ended");
         require(!_stake.unstaked, "Already claimed");
         _stake.unstaked = true;
         unstakedCollateral += _stake.amount;
-        token.safeTransfer(msg.sender, _stake.amount);
-        emit Unstake(msg.sender, _stake.amount, _index);
+        token.safeTransfer(_stake.owner, _stake.amount);
+        emit Unstake(_stake.owner, _stake.amount, _index);
+        return _stake.amount;
     }
 
-    function claimRewards(uint256 _index) external {
+    function claimRewards(uint256 _index) external returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
-        require(_stake.owner == msg.sender || _stake.owner == beneficiary.owner, "Not owner or Beneficiary");
+        require(_stake.owner == msg.sender, "Not owner");
+        //require(_stake.owner == msg.sender || _stake.owner == beneficiary.owner, "Not owner or Beneficiary");
         uint256 totalUnlocked = getUnlockedInstallmentRewards(_index);
         require(_stake.claimedRewards < totalUnlocked, "Can't claim");
         uint256 toBeClaimed = totalUnlocked - _stake.claimedRewards;
@@ -176,6 +200,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         uint256 beneficiaryShare = (toBeClaimed * (100 - stakerRewardShare)) / stakerRewardShare;
         beneficiary.totalRewards += beneficiaryShare;
         emit RewardsClaimed(_stake.owner, toBeClaimed, _index);
+        return toBeClaimed;
     }
 
     function claimBeneficiaryRewards() external returns (uint256) {
@@ -215,6 +240,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         uint256 stakerShare = (totalRewards * stakerRewardShare) / 100;
         return stakerShare;
     }
+
     function calculateBeneficiaryRewards(uint256 _collataralAmount) public view returns (uint256) {
         uint256 totalRewards = getSecurityDepositByCollateral(_collataralAmount);
         uint256 stakerShare = (totalRewards * stakerRewardShare) / 100;

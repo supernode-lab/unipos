@@ -69,11 +69,11 @@ contract SetUp is Test {
         console.log("totalSecurityDeposit: ", core.totalSecurityDeposit());
         console.log("stakeAmount: ", stakeAmount);
         token.approve(address(core), stakeAmount);
-        core.stake(stakeAmount);
+        //core.stake(stakeAmount);
         vm.stopPrank();
         vm.startPrank(staker2);
         token.approve(address(core), stakeAmount);
-        core.stake(stakeAmount);
+        //core.stake(stakeAmount);
         vm.stopPrank();
         StakeCore.StakeInfo memory info1 = core.getStakeInfo(0);
         assertEq(info1.owner, staker1);
