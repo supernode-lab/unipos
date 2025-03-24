@@ -82,11 +82,11 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     mapping(address => uint256[]) public userStakeIndexes; // 每个用户的质押记录
 
 
-    function getStakeRecords(uint256 _index) external returns (StakeInfo memory){
+    function getStakeRecords(uint256 _index) external view returns (StakeInfo memory){
         return stakeRecords[_index];
     }
 
-    function getUserStakeIndexes(address owner) external returns (uint256[]memory){
+    function getUserStakeIndexes(address owner) external view returns (uint256[]memory){
         return userStakeIndexes[owner];
     }
 

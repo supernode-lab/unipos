@@ -14,35 +14,38 @@ contract ShareCore {
 
     struct ShareholderInfo {
         address owner;
+        uint256 shareID;
         uint256 grantedReward;
         uint256 claimedReward;
         uint256 grantedPrincipal;
         uint256 claimedPrincipal;
     }
 
+    struct ShareInfo {
+        bool isSet;
+        uint256 totalReward;
+        uint256 claimedReward;
+        uint256 grantedReward;
+        uint256 principal;
+        uint256 claimedPrincipal;
+        uint256 grantedPrincipal;
+    }
+
     IStakeCore  public immutable stakeCore;
     IERC20 public immutable token;
+    address public admin;
 
     uint256[] public shareIDs;
-    mapping(uint256 => bool) registeredSharedIDs;
-
-    uint256 public totalReward;
-    uint256 public claimedReward;
-    uint256 public grantedReward;
-
-
-    uint256 public principal;
-    uint256 public grantedPrincipal;
-    uint256 public claimedPrincipal;
+    mapping(uint256 => ShareInfo) public sharesInfo;
 
     address[] public shareholders;
     mapping(address => ShareholderInfo) public shareholdersInfo;
 
-    address public admin;
-
     // Events
     event ShareholderAdded(address indexed shareholder, uint256 grantedReward, uint256 grantedPrincipal);
     event StakeRewardsClaimed(uint256 shareIDs, uint256 amount);
+    event StakeRewardsClaimedBatch(uint256[] amount);
+
     event StakePrincipalClaimed(uint256 shareIDs, uint256 amount);
     event RewardsClaimed(address indexed shareholder, uint256 amount);
     event PrincipalClaimed(address indexed shareholder, uint256 amount);
@@ -64,21 +67,24 @@ contract ShareCore {
         _;
     }
 
-    function addShareholder(address _owner, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
-        require(grantedReward + _grantedReward <= totalReward, "Remaining reward is insufficient");
-        require(grantedPrincipal + _grantedPrincipal <= principal, "Remaining principal is insufficient");
+    function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
+        ShareInfo storage shareInfo = sharesInfo[_shareID];
+        require(shareInfo.isSet, "the shareID has not registered yet");
+        require(shareInfo.grantedReward + _grantedReward <= shareInfo.totalReward, "Remaining reward is insufficient");
+        require(shareInfo.grantedPrincipal + _grantedPrincipal <= shareInfo.principal, "Remaining principal is insufficient");
         require(shareholdersInfo[_owner].owner == address(0), "Shareholder already exists");
 
         shareholders.push(_owner);
         shareholdersInfo[_owner] = ShareholderInfo({
             owner: _owner,
+            shareID: _shareID,
             grantedReward: _grantedReward,
             claimedReward: 0,
             grantedPrincipal: _grantedPrincipal,
             claimedPrincipal: 0
         });
-        grantedReward += _grantedReward;
-        grantedPrincipal += _grantedPrincipal;
+        shareInfo.grantedReward += _grantedReward;
+        shareInfo.grantedPrincipal += _grantedPrincipal;
 
         emit ShareholderAdded(_owner, _grantedReward, _grantedPrincipal);
     }
@@ -89,39 +95,56 @@ contract ShareCore {
             return;
         }
 
-        uint256 newAmount = 0;
-        uint256 newReward = 0;
         for (uint256 i = shareIDs.length; i < _shareIDs.length; i++) {
-            IStakeCore.StakeInfo memory stakeInfo = stakeCore.getStakeRecords(_shareIDs[i]);
-            newAmount += stakeInfo.amount;
-            newReward += (stakeInfo.claimedRewards + stakeInfo.lockedRewards);
-            shareIDs.push(_shareIDs[i]);
-            registeredSharedIDs[_shareIDs[i]] = true;
+            uint256 shareID = _shareIDs[i];
+            IStakeCore.StakeInfo memory stakeInfo = stakeCore.getStakeRecords(shareID);
+
+            sharesInfo[shareID] = ShareInfo({
+                isSet: true,
+                totalReward: stakeInfo.claimedRewards + stakeInfo.lockedRewards,
+                claimedReward: 0,
+                grantedReward: 0,
+                principal: stakeInfo.amount,
+                grantedPrincipal: 0,
+                claimedPrincipal: 0
+            });
+
+            shareIDs.push(shareID);
+        }
+    }
+
+    function ClaimStakeRewardsBatch() external {
+        uint256 length = shareIDs.length;
+        uint256[] memory amounts = new uint256[](length);
+        for (uint256 i = 0; i < length; i++) {
+            uint256 _shareID = shareIDs[i];
+            uint256 amount = stakeCore.claimRewards(_shareID);
+            sharesInfo[_shareID].claimedReward += amount;
+            amounts[i] = amount;
         }
 
-        principal += newAmount;
-        totalReward += newReward;
+        emit StakeRewardsClaimedBatch(amounts);
     }
 
-    function ClaimStakeRewards(uint256 _sharedID) external {
-        require(registeredSharedIDs[_sharedID], "the sharedID has not registered yet");
-        uint256 amount = stakeCore.claimRewards(_sharedID);
-        claimedReward += amount;
-        emit StakeRewardsClaimed(_sharedID, amount);
+    function ClaimStakeRewards(uint256 _shareID) external {
+        require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
+        uint256 amount = stakeCore.claimRewards(_shareID);
+        sharesInfo[_shareID].claimedReward += amount;
+        emit StakeRewardsClaimed(_shareID, amount);
     }
 
-    function ClaimStakePrincipal(uint256 _sharedID) external {
-        require(registeredSharedIDs[_sharedID], "the sharedID has not registered yet");
-        uint256 amount = stakeCore.unstake(_sharedID);
-        claimedPrincipal += amount;
-        emit StakePrincipalClaimed(_sharedID, amount);
+    function ClaimStakePrincipal(uint256 _shareID) external {
+        require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
+        uint256 amount = stakeCore.unstake(_shareID);
+        sharesInfo[_shareID].claimedPrincipal += amount;
+        emit StakePrincipalClaimed(_shareID, amount);
     }
 
     function claimRewards() external {
         ShareholderInfo storage info = shareholdersInfo[msg.sender];
         require(info.owner == msg.sender, "Not a shareholder");
         //require(info.grantedReward > info.claimedReward, "No rewards");
-        uint256 claimableTotalReward = calculateShareholderRewards(info.grantedReward);
+        uint256 claimableTotalReward = calculateShareholderRewards(info.grantedReward, info.shareID);
         require(claimableTotalReward > info.claimedReward, "No rewards");
         uint256 claimableReward = claimableTotalReward - info.claimedReward;
 
@@ -134,7 +157,7 @@ contract ShareCore {
         ShareholderInfo storage info = shareholdersInfo[msg.sender];
         require(info.owner == msg.sender, "Not a shareholder");
         //require(info.grantedReward > info.claimedReward, "No rewards");
-        uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal);
+        uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareID);
         require(claimableTotalPrincipal > info.claimedPrincipal, "No Principal");
         uint256 claimablePrincipal = claimableTotalPrincipal - info.claimedPrincipal;
 
@@ -143,17 +166,22 @@ contract ShareCore {
         emit PrincipalClaimed(msg.sender, claimablePrincipal);
     }
 
-    function calculateShareholderRewards(uint256 _shareholderGrantedReward) internal returns (uint256){
-        return _shareholderGrantedReward * claimedReward / totalReward;
+    function calculateShareholderRewards(uint256 _shareholderGrantedReward, uint256 shareID) internal view returns (uint256){
+        return _shareholderGrantedReward * sharesInfo[shareID].claimedReward / sharesInfo[shareID].totalReward;
     }
 
-    function calculateShareholderPrincipal(uint256 _shareholderGrantedPrincipal) internal returns (uint256){
-        return _shareholderGrantedPrincipal * claimedPrincipal / principal;
+    function calculateShareholderPrincipal(uint256 _shareholderGrantedPrincipal, uint256 shareID) internal view returns (uint256){
+        return _shareholderGrantedPrincipal * sharesInfo[shareID].claimedPrincipal / sharesInfo[shareID].principal;
     }
 
     function collect() external onlyAdmin returns (uint256) {
         //  withdraw extra token from this contract
         uint256 balance = token.balanceOf(address(this));
+        uint256 totalReward;
+        uint256 length = shareIDs.length;
+        for (uint256 i = 0; i < length; i++) {
+            totalReward += (sharesInfo[shareIDs[i]].claimedReward + sharesInfo[shareIDs[i]].claimedPrincipal);
+        }
         require(balance >= totalReward, "Not enough token");
         token.safeTransfer(admin, balance - totalReward);
         emit RewardsCollected(balance - totalReward);
