@@ -178,10 +178,17 @@ contract ShareCore {
         //  withdraw extra token from this contract
         uint256 balance = token.balanceOf(address(this));
         uint256 totalReward;
-        uint256 length = shareIDs.length;
-        for (uint256 i = 0; i < length; i++) {
+        uint256 shareIDsLength = shareIDs.length;
+        for (uint256 i = 0; i < shareIDsLength; i++) {
             totalReward += (sharesInfo[shareIDs[i]].claimedReward + sharesInfo[shareIDs[i]].claimedPrincipal);
         }
+
+        uint256 shareholdersLength = shareholders.length;
+        for (uint256 i = 0; i < shareholdersLength; i++) {
+            totalReward -= (shareholdersInfo[shareholders[i]].claimedReward + shareholdersInfo[shareholders[i]].claimedPrincipal);
+        }
+
+
         require(balance >= totalReward, "Not enough token");
         token.safeTransfer(admin, balance - totalReward);
         emit RewardsCollected(balance - totalReward);
