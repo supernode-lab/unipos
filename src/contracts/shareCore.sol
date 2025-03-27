@@ -118,9 +118,12 @@ contract ShareCore {
         uint256[] memory amounts = new uint256[](length);
         for (uint256 i = 0; i < length; i++) {
             uint256 _shareID = shareIDs[i];
-            uint256 amount = stakeCore.claimRewards(_shareID);
-            sharesInfo[_shareID].claimedReward += amount;
-            amounts[i] = amount;
+            try stakeCore.claimRewards(_shareID)returns (uint256 amount){
+                sharesInfo[_shareID].claimedReward += amount;
+                amounts[i] = amount;
+            }catch{
+
+            }
         }
 
         emit StakeRewardsClaimedBatch(amounts);
