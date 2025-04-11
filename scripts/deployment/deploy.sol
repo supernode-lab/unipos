@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Script} from "forge-std/Script.sol";
+
+import {ShareCore} from "../../src/contracts/ShareCore.sol";
 import {StakeCore} from "../../src/contracts/StakeCore.sol";
-import {BeneficiaryCore} from "../../src/contracts/BeneficiaryCore.sol";
-import "forge-std/console.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {CommonBase} from "forge-std/Base.sol";
+import {Script} from "forge-std/Script.sol";
+import {StdChains} from "forge-std/StdChains.sol";
+import {StdCheatsSafe} from "forge-std/StdCheats.sol";
+import {StdUtils} from "forge-std/StdUtils.sol";
+import {console} from "forge-std/console.sol";
 
 contract DeployAll is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
         address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
+        address adminAddress = vm.envAddress("ADMIN_ADDRESS");
         uint256 apy = vm.envUint("APY");
         vm.startBroadcast(deployerPrivateKey);
 
@@ -18,12 +24,12 @@ contract DeployAll is Script {
         uint256 stakerShare = 60;
         uint256 installmentCount = 1;
 
-        StakeCore core = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, stakerShare, apy, installmentCount);
-        BeneficiaryCore bfc = new BeneficiaryCore(IERC20(tokenAddress), msg.sender, address(core));
+        StakeCore stakecore = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, stakerShare, apy, installmentCount);
+        ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress, address(stakecore));
 
-        console.log("Stake Core deployed to:", address(core));
-        console.log("BeneficiaryCore deployed to:", address(bfc));
 
+        console.log("Stake Core deployed to:", address(stakecore));
+        console.log("Share Core deployed to:", address(sharecore));
         vm.stopBroadcast();
     }
 }

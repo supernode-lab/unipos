@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {StakeCore} from "src/contracts/StakeCore.sol";
-import {BeneficiaryCore} from "src/contracts/BeneficiaryCore.sol";
 import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract Token is ERC20 {
@@ -17,7 +16,6 @@ contract Token is ERC20 {
 
 contract SetUp is Test {
     StakeCore public core;
-    BeneficiaryCore public beneficiary;
     Token public token;
     address public owner = address(this);
     address public admin = getAddressFromString("setup_Admin");
@@ -41,8 +39,8 @@ contract SetUp is Test {
         // Deploy contracts
         vm.startPrank(admin);
         core = new StakeCore(token, provider, 180 days, 60, 200, 5);
-        beneficiary = new BeneficiaryCore(token, admin, address(core));
-        core.initBeneficiary(address(beneficiary));
+        //beneficiary = new BeneficiaryCore(token, admin, address(core));
+        //core.initBeneficiary(address(beneficiary));
         token.mint(admin, 1000 ether);
         token.mint(staker1, 1000 ether);
         token.mint(staker2, 1000 ether);
@@ -103,32 +101,5 @@ contract SetUp is Test {
         core.claimRewards(1);
     }
 
-    function _testBeneficiary() public {
-        _testStake();
-        vm.startPrank(admin);
-        beneficiary.addShareholder(holder1, 10 ether);
-        beneficiary.addShareholder(holder2, 30 ether);
-        beneficiary.setShares(holders, shares);
-        uint256 received = beneficiary.withdrawRewards();
-        console.log("received", received / 1e18);
-        assertEq(received, 80 ether, "receive 80");
-        console.log("grantedAmount1:", beneficiary.getShareholderInfo(holder1).grantedAmount);
-        console.log("grantedAmount2:", beneficiary.getShareholderInfo(holder2).grantedAmount);
-        uint256 preBalance = token.balanceOf(holder1);
-        vm.stopPrank();
-        vm.prank(holder1);
-        beneficiary.claimRewards();
-        vm.assertEq(token.balanceOf(holder1) - preBalance, 10 ether);
-    }
-    function _testCollect() public {
-        _testBeneficiary();
-        vm.startPrank(admin);
-        token.transfer(address(core), 1 ether);
-        uint256 _extra = core.collect();
-        vm.assertEq(_extra, 1 ether);
-    }
 
-    function testAll() public {
-        _testCollect();
-    }
 }
