@@ -38,7 +38,7 @@ contract SetUp is Test {
         token = new Token();
         // Deploy contracts
         vm.startPrank(admin);
-        core = new StakeCore(token, provider, 180 days, 60, 200, 5);
+        core = new StakeCore(token, provider, 180 days, 180);
         //beneficiary = new BeneficiaryCore(token, admin, address(core));
         //core.initBeneficiary(address(beneficiary));
         token.mint(admin, 1000 ether);
@@ -48,58 +48,6 @@ contract SetUp is Test {
         vm.stopPrank();
     }
 
-    function testRead() public {
-        assertEq(core.admin(), admin);
-        assertEq(core.apy(), (200 * PRICE_PRECISION) / 100);
-    }
-
-    function _testDeposit() public {
-        vm.startPrank(provider);
-        token.approve(address(core), INITIAL_STAKE);
-        core.depositSecurity(INITIAL_STAKE);
-        vm.stopPrank();
-    }
-    function _testStake() public {
-        _testDeposit();
-        vm.startPrank(staker1);
-        uint256 stakeAmount = core.getCollateralBySecurityDeposit(INITIAL_STAKE / 2);
-        console.log("required Collateral: ", core.requiredCollateral());
-        console.log("totalSecurityDeposit: ", core.totalSecurityDeposit());
-        console.log("stakeAmount: ", stakeAmount);
-        token.approve(address(core), stakeAmount);
-        //core.stake(stakeAmount);
-        vm.stopPrank();
-        vm.startPrank(staker2);
-        token.approve(address(core), stakeAmount);
-        //core.stake(stakeAmount);
-        vm.stopPrank();
-        StakeCore.StakeInfo memory info1 = core.getStakeInfo(0);
-        assertEq(info1.owner, staker1);
-        assertEq(info1.amount, stakeAmount);
-        assertEq(info1.lockedRewards, 60 ether);
-        // go to 90 days later
-        vm.warp(block.timestamp + 100 days); // release 2/5
-        uint256 rewards1 = core.getUnlockedInstallmentRewards(0);
-        console.log("rewards1 100D: ", rewards1);
-        assertEq(rewards1, 24 ether);
-        vm.startPrank(staker1);
-        vm.expectRevert(bytes("Lock period not ended"));
-        core.unstake(0);
-        core.claimRewards(0);
-        assertEq(core.getStakeInfo(0).claimedRewards, 24 ether);
-        assertEq(core.getStakeInfo(0).lockedRewards, 36 ether);
-        vm.stopPrank();
-        // go to 185 days later
-        vm.warp(block.timestamp + 88 days); // release 5/5
-        uint256 rewards1_2 = core.getUnlockedInstallmentRewards(0);
-        console.log("rewards1 185D: ", rewards1_2);
-        assertEq(rewards1_2, 60 ether);
-        vm.prank(staker1);
-        core.claimRewards(0);
-        assertEq(core.getUnlockedInstallmentRewards(1), 60 ether, "unlocked rewards 60");
-        vm.prank(staker2);
-        core.claimRewards(1);
-    }
 
 
 }

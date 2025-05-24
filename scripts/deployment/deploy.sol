@@ -17,14 +17,12 @@ contract DeployAll is Script {
         address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
         address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
         address adminAddress = vm.envAddress("ADMIN_ADDRESS");
-        uint256 apy = vm.envUint("APY");
         vm.startBroadcast(deployerPrivateKey);
 
         uint256 lockDays = 180;
-        uint256 stakerShare = 60;
         uint256 installmentCount = 1;
 
-        StakeCore stakecore = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, stakerShare, apy, installmentCount);
+        StakeCore stakecore = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, installmentCount);
         ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress, address(stakecore));
 
 
