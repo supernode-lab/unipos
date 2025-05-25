@@ -15,15 +15,15 @@ contract DeployAll is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
-        address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
+        //address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
         address adminAddress = vm.envAddress("ADMIN_ADDRESS");
         vm.startBroadcast(deployerPrivateKey);
 
         uint256 lockDays = 180;
         uint256 installmentCount = 1;
 
-        StakeCore stakecore = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, installmentCount);
-        ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress, address(stakecore));
+        StakeCore stakecore = new StakeCore(IERC20(tokenAddress),  lockDays, installmentCount);
+        ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress,address(stakecore));
 
 
         console.log("Stake Core deployed to:", address(stakecore));
