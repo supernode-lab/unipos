@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 // import "forge-std/console.sol";
@@ -20,7 +19,6 @@ interface IStakeCore {
         bool unstaked;
     }
 
-    function claimBeneficiaryRewards() external returns (uint256);
 
     function claimRewards(uint256) external returns (uint256);
 
