@@ -6,9 +6,9 @@ out = "out"
 test = "test"
 script = "scripts"
 libs = ["lib"]
-via_ir = false
-solc = "0.8.24"
-evm_version = "cancun"
+solc_version = "0.8.24"
+evm_version = "london"
+
 fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read", path = "./out" },

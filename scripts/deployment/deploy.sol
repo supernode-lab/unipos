@@ -10,6 +10,7 @@ import {StdCheatsSafe} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
 import {console} from "forge-std/console.sol";
 import {RewardPayout} from "../../src/contracts/RewardPayout.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract DeployAll is Script {
     function run() external {
@@ -18,12 +19,16 @@ contract DeployAll is Script {
         address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
         address beneficiaryAddress = vm.envAddress("BENEFICIARY_ADDRESS");
         address adminAddress = vm.envAddress("ADMIN_ADDRESS");
+        address tokenAddress=vm.envAddress("TOKEN_ADDRESS");
         uint256 apy = vm.envUint("APY");
         vm.startBroadcast(deployerPrivateKey);
 
+        ShareCore shareCore=new ShareCore(IERC20(tokenAddress),adminAddress,address(0));
+        beneficiaryAddress=address(shareCore);
         RewardPayout rewardPayout = new RewardPayout(StakeCore(stakeAddress), apy,providerAddress, beneficiaryAddress,adminAddress);
+        shareCore.registerStakeCore(address(rewardPayout));
 
-
+        console.log("shareCore deployed to:", address(shareCore));
         console.log("rewardPayout deployed to:", address(rewardPayout));
         vm.stopBroadcast();
     }
