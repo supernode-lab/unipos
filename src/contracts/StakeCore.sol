@@ -27,6 +27,8 @@ interface IStakeCore {
     function getStakeRecords(uint256) external returns (StakeInfo memory);
 
     function unstake(uint256) external returns (uint256);
+
+    function token() external returns(IERC20);
 }
 
 /**

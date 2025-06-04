@@ -17,16 +17,17 @@ contract DeployAll is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address stakeAddress = vm.envAddress("STAKE_ADDRESS");
         address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
-        address beneficiaryAddress = vm.envAddress("BENEFICIARY_ADDRESS");
+        //address beneficiaryAddress = vm.envAddress("BENEFICIARY_ADDRESS");
         address adminAddress = vm.envAddress("ADMIN_ADDRESS");
-        address tokenAddress=vm.envAddress("TOKEN_ADDRESS");
+        //address tokenAddress=vm.envAddress("TOKEN_ADDRESS");
         uint256 apy = vm.envUint("APY");
+
         vm.startBroadcast(deployerPrivateKey);
 
-        ShareCore shareCore=new ShareCore(IERC20(tokenAddress),adminAddress,address(0));
-        beneficiaryAddress=address(shareCore);
+        ShareCore shareCore=new ShareCore(adminAddress,address(0));
+        address beneficiaryAddress=address(shareCore);
         RewardPayout rewardPayout = new RewardPayout(StakeCore(stakeAddress), apy,providerAddress, beneficiaryAddress,adminAddress);
-        shareCore.registerStakeCore(address(rewardPayout));
+        //shareCore.registerStakeCore(address(rewardPayout));
 
         console.log("shareCore deployed to:", address(shareCore));
         console.log("rewardPayout deployed to:", address(rewardPayout));
