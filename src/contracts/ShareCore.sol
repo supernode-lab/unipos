@@ -69,7 +69,7 @@ contract ShareCore {
         _;
     }
 
-    function registerStakeCore(address _stakeCore) external {
+    function registerStakeCore(address _stakeCore) external onlyAdmin{
         require(address(stakeCore) == address(0), "StakeCore address must be zero");
         require(_stakeCore != address(0), "StakeCore parameter can't be zero");
 
