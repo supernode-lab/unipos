@@ -31,8 +31,8 @@ contract ShareCore {
         uint256 grantedPrincipal;
     }
 
-    IStakeCore  public immutable stakeCore;
-    IERC20 public immutable token;
+    IStakeCore  public  stakeCore;
+    IERC20 public  token;
     address public admin;
 
     uint256[] public shareIDs;
@@ -53,18 +53,28 @@ contract ShareCore {
     event RewardsCollected(uint256 amount);
     event RewardsDistributed(uint256 totalRewards);
 
-    constructor(IERC20 _token, address _admin, address _stakeCore) {
+    constructor(address _admin, address _stakeCore) {
         require(_admin != address(0), "Admin address can't be zero");
-        require(_stakeCore != address(0), "StakeCore address can't be zero");
+        //require(_stakeCore != address(0), "StakeCore address can't be zero");
 
-        token = _token;
         admin = _admin;
-        stakeCore = IStakeCore(_stakeCore);
+        if (_stakeCore != address(0)) {
+            stakeCore = IStakeCore(_stakeCore);
+            token = stakeCore.token();
+        }
     }
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "Only admin can call this function");
         _;
+    }
+
+    function registerStakeCore(address _stakeCore) external {
+        require(address(stakeCore) == address(0), "StakeCore address must be zero");
+        require(_stakeCore != address(0), "StakeCore parameter can't be zero");
+
+        stakeCore = IStakeCore(_stakeCore);
+        token=stakeCore.token();
     }
 
     function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {

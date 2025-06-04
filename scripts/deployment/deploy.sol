@@ -25,7 +25,7 @@ contract DeployAll is Script {
         uint256 installmentCount = 1;
 
         StakeCore stakecore = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, stakerShare, apy, installmentCount);
-        ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress, address(stakecore));
+        ShareCore sharecore = new ShareCore( adminAddress, address(stakecore));
 
 
         console.log("Stake Core deployed to:", address(stakecore));
