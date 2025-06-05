@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+
 import {IStakeCore} from "./StakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -21,6 +22,11 @@ contract ShareCore {
         uint256 claimedPrincipal;
     }
 
+    struct ShareHolderKey {
+        address owner;
+        uint256 shareID;
+    }
+
     struct ShareInfo {
         bool isSet;
         uint256 totalReward;
@@ -38,8 +44,8 @@ contract ShareCore {
     uint256[] public shareIDs;
     mapping(uint256 => ShareInfo) public sharesInfo;
 
-    address[] public shareholders;
-    mapping(address => ShareholderInfo) public shareholdersInfo;
+    ShareHolderKey[] public shareholders;
+    mapping(bytes32 => ShareholderInfo) public shareholdersInfo;
 
     // Events
     event ShareholderAdded(address indexed shareholder, uint256 grantedReward, uint256 grantedPrincipal);
@@ -72,10 +78,16 @@ contract ShareCore {
         require(shareInfo.isSet, "the shareID has not registered yet");
         require(shareInfo.grantedReward + _grantedReward <= shareInfo.totalReward, "Remaining reward is insufficient");
         require(shareInfo.grantedPrincipal + _grantedPrincipal <= shareInfo.principal, "Remaining principal is insufficient");
-        require(shareholdersInfo[_owner].owner == address(0), "Shareholder already exists");
 
-        shareholders.push(_owner);
-        shareholdersInfo[_owner] = ShareholderInfo({
+
+        require(shareholdersInfo[_getShareHolderKeyHash(_owner, _shareID)].owner == address(0), "Shareholder already exists");
+
+        shareholders.push(ShareHolderKey({
+        owner : _owner,
+        shareID : _shareID
+        }));
+
+        shareholdersInfo[_getShareHolderKeyHash(_owner, _shareID)] = ShareholderInfo({
             owner: _owner,
             shareID: _shareID,
             grantedReward: _grantedReward,
@@ -143,8 +155,8 @@ contract ShareCore {
         emit StakePrincipalClaimed(_shareID, amount);
     }
 
-    function claimRewards() external {
-        ShareholderInfo storage info = shareholdersInfo[msg.sender];
+    function claimRewards(uint256 _shareID) external {
+        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender,_shareID)];
         require(info.owner == msg.sender, "Not a shareholder");
         //require(info.grantedReward > info.claimedReward, "No rewards");
         uint256 claimableTotalReward = calculateShareholderRewards(info.grantedReward, info.shareID);
@@ -156,8 +168,8 @@ contract ShareCore {
         emit RewardsClaimed(msg.sender, claimableReward);
     }
 
-    function claimPrincipal() external {
-        ShareholderInfo storage info = shareholdersInfo[msg.sender];
+    function claimPrincipal(uint256 _shareID) external {
+        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender,_shareID)];
         require(info.owner == msg.sender, "Not a shareholder");
         //require(info.grantedReward > info.claimedReward, "No rewards");
         uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareID);
@@ -188,7 +200,8 @@ contract ShareCore {
 
         uint256 shareholdersLength = shareholders.length;
         for (uint256 i = 0; i < shareholdersLength; i++) {
-            totalReward -= (shareholdersInfo[shareholders[i]].claimedReward + shareholdersInfo[shareholders[i]].claimedPrincipal);
+            bytes32 key=_getShareHolderKeyHash(shareholders[i].owner,shareholders[i].shareID);
+            totalReward -= (shareholdersInfo[key].claimedReward + shareholdersInfo[key].claimedPrincipal);
         }
 
 
@@ -198,7 +211,12 @@ contract ShareCore {
         return balance - totalReward;
     }
 
-    function getShareholderInfo(address _shareholder) external view returns (ShareholderInfo memory) {
-        return shareholdersInfo[_shareholder];
+    function getShareholderInfo(address _shareholder, uint256 shareID) public view returns (ShareholderInfo memory) {
+        return shareholdersInfo[_getShareHolderKeyHash(_shareholder, shareID)];
+    }
+
+
+    function _getShareHolderKeyHash(address owner, uint256 shareID) internal pure returns (bytes32) {
+        return keccak256(abi.encode(owner, shareID));
     }
 }
