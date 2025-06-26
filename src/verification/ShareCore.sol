@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-
 import {IStakeCore} from "./StakeCore.sol";
+
+
 
 /**
  * @title POS Stake Core Contract
@@ -33,7 +34,7 @@ contract ShareCore {
         uint256 grantedPrincipal;
     }
 
-    IStakeCore  immutable  stakeCore;
+    IStakeCore  public  stakeCore;
     address public admin;
 
     uint256[] public shareIDs;

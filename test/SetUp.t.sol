@@ -35,16 +35,11 @@ contract SetUp is Test {
     }
 
     function setUp() public virtual {
-        token = new Token();
         // Deploy contracts
         vm.startPrank(admin);
-        core = new StakeCore(token, provider, 180 days, 60, 200, 5);
+        core = new StakeCore( provider, 180 days, 60, 200, 5);
         //beneficiary = new BeneficiaryCore(token, admin, address(core));
         //core.initBeneficiary(address(beneficiary));
-        token.mint(admin, 1000 ether);
-        token.mint(staker1, 1000 ether);
-        token.mint(staker2, 1000 ether);
-        token.mint(provider, 1000 ether);
         vm.stopPrank();
     }
 
@@ -56,7 +51,7 @@ contract SetUp is Test {
     function _testDeposit() public {
         vm.startPrank(provider);
         token.approve(address(core), INITIAL_STAKE);
-        core.depositSecurity(INITIAL_STAKE);
+        core.depositSecurity();
         vm.stopPrank();
     }
     function _testStake() public {

@@ -14,7 +14,6 @@ import {console} from "forge-std/console.sol";
 contract DeployAll is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
         address providerAddress = vm.envAddress("PROVIDER_ADDRESS");
         address adminAddress = vm.envAddress("ADMIN_ADDRESS");
         uint256 apy = vm.envUint("APY");
@@ -24,8 +23,8 @@ contract DeployAll is Script {
         uint256 stakerShare = 60;
         uint256 installmentCount = 1;
 
-        StakeCore stakecore = new StakeCore(IERC20(tokenAddress), providerAddress, lockDays, stakerShare, apy, installmentCount);
-        ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress, address(stakecore));
+        StakeCore stakecore = new StakeCore( providerAddress, lockDays, stakerShare, apy, installmentCount);
+        ShareCore sharecore = new ShareCore( adminAddress, address(stakecore));
 
 
         console.log("Stake Core deployed to:", address(stakecore));
