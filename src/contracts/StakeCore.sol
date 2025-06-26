@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -36,7 +34,6 @@ interface IStakeCore {
  * @notice
  */
 contract StakeCore is IStakeCore, ReentrancyGuard {
-    using SafeERC20 for IERC20;
     using Math for uint256;
 
     // Events
@@ -62,7 +59,6 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     }
 
     uint256 public constant PRECISION = 1e18;
-    IERC20 public immutable token;
     uint256 public immutable lockPeriod;
     uint256 public immutable stakerRewardShare;
     uint256 public immutable apy;
@@ -95,10 +91,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     BeneficiaryInfo public beneficiary;
     Provider public provider;
 
-    constructor(IERC20 _token, address _provider, uint256 _lockPeriod, uint256 stakerShares, uint256 _apy, uint256 installmentCount) {
-        require(address(_token) != address(0), "Invalid Token address");
+    constructor(address _provider, uint256 _lockPeriod, uint256 stakerShares, uint256 _apy, uint256 installmentCount) {
         require(_provider != address(0), "Invalid provider address");
-        token = _token;
         provider.owner = _provider;
         lockPeriod = _lockPeriod;
         stakerRewardShare = stakerShares; // percentage, based on 100
@@ -134,11 +128,10 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         emit BeneficiaryInitialized(_bf);
     }
 
-    function depositSecurity(uint256 _amount) external onlyProvider nonReentrant {
-        totalSecurityDeposit += _amount;
+    function depositSecurity() external payable onlyProvider nonReentrant {
+        totalSecurityDeposit += msg.value;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
-        token.safeTransferFrom(msg.sender, address(this), _amount);
-        emit SecurityDeposited(_amount, totalSecurityDeposit);
+        emit SecurityDeposited(msg.value, totalSecurityDeposit);
     }
 
     function withdrawSecurity(uint256 _amount) external onlyProvider nonReentrant {
@@ -147,16 +140,17 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         require(withdrawnableSecurityDeposit >= _amount, "No enough balance");
         totalSecurityDeposit -= _amount;
         requiredCollateral = getCollateralBySecurityDeposit(totalSecurityDeposit);
-        token.safeTransfer(msg.sender, _amount);
+        (bool success, )=payable(msg.sender).call{value: _amount}("");
+        require(success,"transfer failed");
         emit SecurityWithdrawn(_amount, totalSecurityDeposit);
     }
 
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner, uint256 _amount) external {
+    function stake(address owner) external payable {
+        uint256 _amount = msg.value;
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
         require(totalCollateral + _amount <= requiredCollateral, "No enough allowance");
-        token.safeTransferFrom(msg.sender, address(this), _amount);
         totalCollateral += _amount;
         stakeRecords.push(
             StakeInfo({
@@ -180,7 +174,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         require(!_stake.unstaked, "Already claimed");
         _stake.unstaked = true;
         unstakedCollateral += _stake.amount;
-        token.safeTransfer(_stake.owner, _stake.amount);
+        (bool success, )=payable(_stake.owner).call{value: _stake.amount}("");
+        require(success,"transfer failed");
         emit Unstake(_stake.owner, _stake.amount, _index);
         return _stake.amount;
     }
@@ -195,7 +190,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         _stake.claimedRewards += toBeClaimed;
         _stake.lockedRewards -= toBeClaimed;
         totalClaimedRewards += toBeClaimed;
-        token.safeTransfer(_stake.owner, toBeClaimed);
+        (bool success, )=payable(_stake.owner).call{value: toBeClaimed}("");
+        require(success,"transfer failed");
         // toBeClaimed / beneficiaryShare = stakerRewardShare / (100 - stakerRewardShare)
         uint256 beneficiaryShare = (toBeClaimed * (100 - stakerRewardShare)) / stakerRewardShare;
         beneficiary.totalRewards += beneficiaryShare;
@@ -208,7 +204,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         uint256 rewards = beneficiary.totalRewards - beneficiary.claimedRewards;
         beneficiary.claimedRewards += rewards;
         totalClaimedRewards += rewards;
-        token.safeTransfer(msg.sender, rewards);
+        (bool success, )=payable(msg.sender).call{value: rewards}("");
+        require(success,"transfer failed");
         emit BeneficiaryRewardsClaimed(msg.sender, rewards);
         return rewards;
     }
@@ -216,11 +213,13 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     // collect the locked token for admin
     function collect() external onlyAdmin returns (uint256) {
         require(
-            totalCollateral + totalSecurityDeposit < token.balanceOf(address(this)) + unstakedCollateral + totalClaimedRewards,
+            totalCollateral + totalSecurityDeposit < address(this).balance + unstakedCollateral + totalClaimedRewards,
             "No locked token"
         );
-        uint256 extraToken = token.balanceOf(address(this)) - (totalCollateral + totalSecurityDeposit - unstakedCollateral - totalClaimedRewards);
-        token.safeTransfer(provider.owner, extraToken);
+
+        uint256 extraToken = address(this).balance - (totalCollateral + totalSecurityDeposit - unstakedCollateral - totalClaimedRewards);
+        (bool success, )=payable(provider.owner).call{value: extraToken}("");
+        require(success,"transfer failed");
         emit CollectExtra(extraToken);
         return extraToken;
     }

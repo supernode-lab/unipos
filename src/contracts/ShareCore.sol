@@ -2,16 +2,12 @@
 pragma solidity ^0.8.20;
 
 import {IStakeCore} from "./StakeCore.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title POS Stake Core Contract
  * @notice
  */
 contract ShareCore {
-    using SafeERC20 for IERC20;
-
     struct ShareholderInfo {
         address owner;
         uint256 shareID;
@@ -32,7 +28,6 @@ contract ShareCore {
     }
 
     IStakeCore  public immutable stakeCore;
-    IERC20 public immutable token;
     address public admin;
 
     uint256[] public shareIDs;
@@ -53,11 +48,10 @@ contract ShareCore {
     event RewardsCollected(uint256 amount);
     event RewardsDistributed(uint256 totalRewards);
 
-    constructor(IERC20 _token, address _admin, address _stakeCore) {
+    constructor(address _admin, address _stakeCore) {
         require(_admin != address(0), "Admin address can't be zero");
         require(_stakeCore != address(0), "StakeCore address can't be zero");
 
-        token = _token;
         admin = _admin;
         stakeCore = IStakeCore(_stakeCore);
     }
@@ -152,7 +146,8 @@ contract ShareCore {
         uint256 claimableReward = claimableTotalReward - info.claimedReward;
 
         info.claimedReward = claimableTotalReward;
-        token.safeTransfer(msg.sender, claimableReward);
+        (bool success,)= payable(msg.sender).call{value:claimableReward}("");
+        require(success,"transfer failed");
         emit RewardsClaimed(msg.sender, claimableReward);
     }
 
@@ -165,7 +160,8 @@ contract ShareCore {
         uint256 claimablePrincipal = claimableTotalPrincipal - info.claimedPrincipal;
 
         info.claimedPrincipal = claimableTotalPrincipal;
-        token.safeTransfer(msg.sender, claimablePrincipal);
+        (bool success,)= payable(msg.sender).call{value:claimablePrincipal}("");
+        require(success,"transfer failed");
         emit PrincipalClaimed(msg.sender, claimablePrincipal);
     }
 
@@ -179,7 +175,7 @@ contract ShareCore {
 
     function collect() external onlyAdmin returns (uint256) {
         //  withdraw extra token from this contract
-        uint256 balance = token.balanceOf(address(this));
+        uint256 balance = address(this).balance;
         uint256 totalReward;
         uint256 shareIDsLength = shareIDs.length;
         for (uint256 i = 0; i < shareIDsLength; i++) {
@@ -193,12 +189,16 @@ contract ShareCore {
 
 
         require(balance >= totalReward, "Not enough token");
-        token.safeTransfer(admin, balance - totalReward);
+        (bool success,)=payable(admin).call{value:balance - totalReward}("");
+        require(success,"transfer failed");
         emit RewardsCollected(balance - totalReward);
         return balance - totalReward;
     }
 
     function getShareholderInfo(address _shareholder) external view returns (ShareholderInfo memory) {
         return shareholdersInfo[_shareholder];
+    }
+
+    receive() external payable {
     }
 }
