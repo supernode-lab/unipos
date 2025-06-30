@@ -67,6 +67,7 @@ contract ShareCore {
         _;
     }
 
+    receive() external payable{}
 
     function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
         ShareInfo storage shareInfo = sharesInfo[_shareID];
@@ -217,4 +218,6 @@ contract ShareCore {
     function _getShareHolderKeyHash(address owner, uint256 shareID) internal pure returns (bytes32) {
         return keccak256(abi.encode(owner, shareID));
     }
+
+
 }
