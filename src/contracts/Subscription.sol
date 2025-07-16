@@ -61,7 +61,7 @@ contract Subscription is BaseCredential {
     event SubscribedByUSDT(address  shareholder, uint256 shareID, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
     event SubscribedByToken(address  shareholder, uint256 shareID, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
     event StakeRewardsClaimed(uint256 shareID, uint256 amount);
-    event StakeRewardsClaimedBatch(uint256[] amount);
+    event StakeRewardsClaimedBatch(uint256[] amounts);
 
     event USDTWithdrawn(address  account, uint256 amount);
     event TokenWithdrawn(address  account, uint256 amount);
@@ -70,6 +70,7 @@ contract Subscription is BaseCredential {
     event RewardsClaimed(address  shareholder, uint256 shareID, uint256 amount);
     event PrincipalClaimed(address  shareholder, uint256 shareID, uint256 amount);
 
+    event Registered(uint256[]shareIDs, uint256[]totalRewards, uint256[]principals);
     event RewardsCollected(uint256 amount);
 
     constructor(address _admin, address _stakeCore, address usdtContAddr) BaseCredential(_admin){
@@ -177,13 +178,22 @@ contract Subscription is BaseCredential {
 
     function register() external {
         uint256[] memory _shareIDs = stakeCore.getUserStakeIndexes(address(this));
-        if (_shareIDs.length == shareIDs.length) {
+        uint256 curShareLen = shareIDs.length;
+        uint256 newShareLen = _shareIDs.length - curShareLen;
+        if (newShareLen == 0) {
             return;
         }
 
-        for (uint256 i = shareIDs.length; i < _shareIDs.length; i++) {
+        uint256[] memory newShareIDs = new uint256[](newShareLen);
+        uint256[] memory totalRewards = new uint256[](newShareLen);
+        uint256[] memory principals = new uint256[](newShareLen);
+        for (uint256 i = curShareLen; i < _shareIDs.length; i++) {
             uint256 shareID = _shareIDs[i];
             IStakeCore.StakeInfo memory stakeInfo = stakeCore.getStakeRecords(shareID);
+
+            newShareIDs[i - curShareLen] = shareID;
+            totalRewards[i - curShareLen] = stakeInfo.claimedRewards + stakeInfo.lockedRewards;
+            principals[i - curShareLen] = stakeInfo.amount;
 
             sharesInfo[shareID] = ShareInfo({
                 isSet: true,
@@ -197,6 +207,8 @@ contract Subscription is BaseCredential {
 
             shareIDs.push(shareID);
         }
+
+        emit Registered(newShareIDs,totalRewards,principals);
     }
 
     function ClaimStakeRewardsBatch() external {
@@ -252,7 +264,7 @@ contract Subscription is BaseCredential {
 
         info.claimedPrincipal = claimableTotalPrincipal;
         token.safeTransfer(msg.sender, claimablePrincipal);
-        emit PrincipalClaimed(msg.sender, _shareID,claimablePrincipal);
+        emit PrincipalClaimed(msg.sender, _shareID, claimablePrincipal);
     }
 
     function calculateShareholderRewards(uint256 _shareholderGrantedReward, uint256 shareID) internal view returns (uint256){
