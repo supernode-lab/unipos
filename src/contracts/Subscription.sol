@@ -58,20 +58,19 @@ contract Subscription is BaseCredential {
     uint256 public withdrawnToken;
 
     // Events
-    event SubscribedByUSDT(address indexed shareholder, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
-    event SubscribedByToken(address indexed shareholder, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
-    event StakeRewardsClaimed(uint256 shareIDs, uint256 amount);
+    event SubscribedByUSDT(address  shareholder, uint256 shareID, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
+    event SubscribedByToken(address  shareholder, uint256 shareID, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
+    event StakeRewardsClaimed(uint256 shareID, uint256 amount);
     event StakeRewardsClaimedBatch(uint256[] amount);
 
     event USDTWithdrawn(address  account, uint256 amount);
     event TokenWithdrawn(address  account, uint256 amount);
 
-    event StakePrincipalClaimed(uint256 shareIDs, uint256 amount);
-    event RewardsClaimed(address indexed shareholder, uint256 amount);
-    event PrincipalClaimed(address indexed shareholder, uint256 amount);
+    event StakePrincipalClaimed(uint256 shareID, uint256 amount);
+    event RewardsClaimed(address  shareholder, uint256 shareID, uint256 amount);
+    event PrincipalClaimed(address  shareholder, uint256 shareID, uint256 amount);
 
     event RewardsCollected(uint256 amount);
-    event RewardsDistributed(uint256 totalRewards);
 
     constructor(address _admin, address _stakeCore, address usdtContAddr) BaseCredential(_admin){
         stakeCore = IStakeCore(_stakeCore);
@@ -112,9 +111,9 @@ contract Subscription is BaseCredential {
         require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
 
         depositedUsdt += amount;
-        usdt.safeTransferFrom(msg.sender, address(this),amount);
+        usdt.safeTransferFrom(msg.sender, address(this), amount);
         _addShareholder(_owner, _shareID, _grantedReward, _grantedPrincipal, 0, amount);
-        emit SubscribedByUSDT(_owner, _grantedReward, _grantedPrincipal, amount);
+        emit SubscribedByUSDT(_owner, _shareID, _grantedReward, _grantedPrincipal, amount);
     }
 
     function subscribeByToken(
@@ -129,9 +128,9 @@ contract Subscription is BaseCredential {
         require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
 
         depositedToken += amount;
-        token.safeTransferFrom(msg.sender, address(this),amount);
+        token.safeTransferFrom(msg.sender, address(this), amount);
         _addShareholder(_owner, _shareID, _grantedReward, _grantedPrincipal, amount, 0);
-        emit SubscribedByToken(_owner, _grantedReward, _grantedPrincipal, amount);
+        emit SubscribedByToken(_owner, _shareID, _grantedReward, _grantedPrincipal, amount);
     }
 
 
@@ -240,7 +239,7 @@ contract Subscription is BaseCredential {
 
         info.claimedReward = claimableTotalReward;
         token.safeTransfer(msg.sender, claimableReward);
-        emit RewardsClaimed(msg.sender, claimableReward);
+        emit RewardsClaimed(msg.sender, _shareID, claimableReward);
     }
 
     function claimPrincipal(uint256 _shareID) external {
@@ -253,7 +252,7 @@ contract Subscription is BaseCredential {
 
         info.claimedPrincipal = claimableTotalPrincipal;
         token.safeTransfer(msg.sender, claimablePrincipal);
-        emit PrincipalClaimed(msg.sender, claimablePrincipal);
+        emit PrincipalClaimed(msg.sender, _shareID,claimablePrincipal);
     }
 
     function calculateShareholderRewards(uint256 _shareholderGrantedReward, uint256 shareID) internal view returns (uint256){
@@ -278,7 +277,7 @@ contract Subscription is BaseCredential {
             bytes32 key = _getShareHolderKeyHash(shareholders[i].owner, shareholders[i].shareID);
             totalReward -= (shareholdersInfo[key].claimedReward + shareholdersInfo[key].claimedPrincipal);
         }
-        totalReward += (depositedToken-withdrawnToken);
+        totalReward += (depositedToken - withdrawnToken);
 
         require(balance >= totalReward, "Not enough token");
         token.safeTransfer(msg.sender, balance - totalReward);
