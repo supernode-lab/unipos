@@ -72,6 +72,7 @@ contract Subscription is BaseCredential {
 
     event Registered(uint256[]shareIDs, uint256[]totalRewards, uint256[]principals);
     event RewardsCollected(uint256 amount);
+    event USDTCollected(uint256 amount);
 
     constructor(address _admin, address _stakeCore, address usdtContAddr) BaseCredential(_admin){
         stakeCore = IStakeCore(_stakeCore);
@@ -291,10 +292,22 @@ contract Subscription is BaseCredential {
         }
         totalReward += (depositedToken - withdrawnToken);
 
-        require(balance >= totalReward, "Not enough token");
+        require(balance > totalReward, "Not enough token");
         token.safeTransfer(msg.sender, balance - totalReward);
         emit RewardsCollected(balance - totalReward);
         return balance - totalReward;
+    }
+
+    function collectUSDT() external onlyAdmin returns (uint256) {
+//  withdraw extra token from this contract
+        uint256 balance = usdt.balanceOf(address(this));
+        uint256 remain=depositedUsdt - withdrawnUsdt;
+
+
+        require(balance > remain, "Not enough token");
+        usdt.safeTransfer(msg.sender, balance - remain);
+        emit USDTCollected(balance - remain);
+        return balance - remain;
     }
 
 
