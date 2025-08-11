@@ -69,16 +69,14 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     }
 
 
-    constructor(uint256 _lockPeriod, uint256 installmentCount) {
+    constructor(uint256 _lockPeriod, uint256 installmentCount, uint256 _minStakeAmount) {
         lockPeriod = _lockPeriod;
-        minStakeAmount = 100 * 1e18;
+        minStakeAmount = _minStakeAmount;
         installmentNum = installmentCount;
     }
 
-
-
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner, uint256 _amount) external payable{
+    function stake(address owner, uint256 _amount) external payable {
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
         totalCollateral += _amount;
@@ -97,7 +95,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         emit Stake(owner, _amount, block.timestamp, lockPeriod);
     }
 
-    function unstake(uint256 _index) external  returns (uint256) {
+    function unstake(uint256 _index) external returns (uint256) {
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         require(block.timestamp >= _stake.startTime + _stake.lockPeriod, "Lock period not ended");
@@ -106,7 +104,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         return 0;
     }
 
-    function claimRewards(uint256 _index) external  returns (uint256){
+    function claimRewards(uint256 _index) external returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         //require(_stake.owner == msg.sender || _stake.owner == beneficiary.owner, "Not owner or Beneficiary");
@@ -116,8 +114,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         _stake.claimedRewards += toBeClaimed;
         _stake.lockedRewards -= toBeClaimed;
         totalClaimedRewards += toBeClaimed;
-        (bool success,)=payable(_stake.owner).call{value:toBeClaimed}("");
-        require(success,"transfer failed");
+        (bool success,) = payable(_stake.owner).call{value: toBeClaimed}("");
+        require(success, "transfer failed");
         emit RewardsClaimed(_stake.owner, toBeClaimed, _index);
         return toBeClaimed;
     }

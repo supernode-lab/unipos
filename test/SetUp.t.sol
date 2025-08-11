@@ -45,7 +45,7 @@ contract SetUp is Test {
         token = new Token();
         // Deploy contracts
         vm.startPrank(admin);
-        core = new StakeCore(180 days, 180);
+        core = new StakeCore(180 days, 180,1);
         share = new ShareCore(token, admin, address(core));
         token.mint(admin, 1000 ether);
         token.mint(staker1, 1000 ether);

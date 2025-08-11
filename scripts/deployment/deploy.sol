@@ -22,7 +22,7 @@ contract DeployAll is Script {
         uint256 lockDays = 180;
         uint256 installmentCount = 1;
 
-        StakeCore stakecore = new StakeCore( lockDays, installmentCount);
+        StakeCore stakecore = new StakeCore( lockDays, installmentCount,1);
         ShareCore sharecore = new ShareCore(IERC20(tokenAddress), adminAddress,address(stakecore));
 
 
