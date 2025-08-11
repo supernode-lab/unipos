@@ -76,7 +76,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     }
 
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner, uint256 _amount) external payable {
+    function stake(address owner) external payable {
+        uint256 _amount = msg.value;
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
         totalCollateral += _amount;

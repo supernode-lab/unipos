@@ -56,11 +56,11 @@ contract SetUp is Test {
         vm.startPrank(staker1);
         uint256 stakeAmount = 180 ether;
         token.approve(address(core), stakeAmount);
-        core.stake(address(share), stakeAmount);
+        core.stake(address(share));
         vm.stopPrank();
         vm.startPrank(staker2);
         token.approve(address(core), stakeAmount);
-        core.stake(address(share), stakeAmount);
+        core.stake(address(share));
         vm.stopPrank();
     }
 
