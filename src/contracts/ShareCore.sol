@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-
 import {IStakeCore} from "./StakeCore.sol";
 
 /**
@@ -33,7 +32,7 @@ contract ShareCore {
         uint256 grantedPrincipal;
     }
 
-    IStakeCore  immutable  stakeCore;
+    IStakeCore public immutable  stakeCore;
     address public admin;
 
     uint256[] public shareIDs;
@@ -67,7 +66,7 @@ contract ShareCore {
         _;
     }
 
-    receive() external payable{}
+    receive() external payable {}
 
     function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
         ShareInfo storage shareInfo = sharesInfo[_shareID];
@@ -79,8 +78,8 @@ contract ShareCore {
         require(shareholdersInfo[_getShareHolderKeyHash(_owner, _shareID)].owner == address(0), "Shareholder already exists");
 
         shareholders.push(ShareHolderKey({
-            owner : _owner,
-            shareID : _shareID
+            owner: _owner,
+            shareID: _shareID
         }));
 
         shareholdersInfo[_getShareHolderKeyHash(_owner, _shareID)] = ShareholderInfo({
@@ -152,7 +151,7 @@ contract ShareCore {
     }
 
     function claimRewards(uint256 _shareID) external {
-        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender,_shareID)];
+        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
         require(info.owner == msg.sender, "Not a shareholder");
         //require(info.grantedReward > info.claimedReward, "No rewards");
         uint256 claimableTotalReward = calculateShareholderRewards(info.grantedReward, info.shareID);
@@ -160,13 +159,13 @@ contract ShareCore {
         uint256 claimableReward = claimableTotalReward - info.claimedReward;
 
         info.claimedReward = claimableTotalReward;
-        (bool success,)=payable(msg.sender).call{value:claimableReward}("");
-        require(success,"tranfer failed");
+        (bool success,) = payable(msg.sender).call{value: claimableReward}("");
+        require(success, "tranfer failed");
         emit RewardsClaimed(msg.sender, claimableReward);
     }
 
     function claimPrincipal(uint256 _shareID) external {
-        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender,_shareID)];
+        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
         require(info.owner == msg.sender, "Not a shareholder");
         //require(info.grantedReward > info.claimedReward, "No rewards");
         uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareID);
@@ -174,8 +173,8 @@ contract ShareCore {
         uint256 claimablePrincipal = claimableTotalPrincipal - info.claimedPrincipal;
 
         info.claimedPrincipal = claimableTotalPrincipal;
-        (bool success,)=payable(msg.sender).call{value:claimablePrincipal}("");
-        require(success,"tranfer failed");
+        (bool success,) = payable(msg.sender).call{value: claimablePrincipal}("");
+        require(success, "tranfer failed");
         emit PrincipalClaimed(msg.sender, claimablePrincipal);
     }
 
@@ -198,14 +197,14 @@ contract ShareCore {
 
         uint256 shareholdersLength = shareholders.length;
         for (uint256 i = 0; i < shareholdersLength; i++) {
-            bytes32 key=_getShareHolderKeyHash(shareholders[i].owner,shareholders[i].shareID);
+            bytes32 key = _getShareHolderKeyHash(shareholders[i].owner, shareholders[i].shareID);
             totalReward -= (shareholdersInfo[key].claimedReward + shareholdersInfo[key].claimedPrincipal);
         }
 
 
         require(balance >= totalReward, "Not enough token");
-        (bool success,)=payable(admin).call{value:balance - totalReward}("");
-        require(success,"tranfer failed");
+        (bool success,) = payable(admin).call{value: balance - totalReward}("");
+        require(success, "tranfer failed");
         emit RewardsCollected(balance - totalReward);
         return balance - totalReward;
     }
