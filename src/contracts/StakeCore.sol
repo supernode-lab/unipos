@@ -47,7 +47,6 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     }
 
     uint256 public constant PRECISION = 1e18;
-    IERC20 public immutable token;
     uint256 public immutable lockPeriod;
     uint256 public immutable minStakeAmount;
     uint256 public immutable installmentNum;
@@ -70,9 +69,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
     }
 
 
-    constructor(IERC20 _token, uint256 _lockPeriod, uint256 installmentCount) {
-        require(address(_token) != address(0), "Invalid Token address");
-        token = _token;
+    constructor(uint256 _lockPeriod, uint256 installmentCount) {
         lockPeriod = _lockPeriod;
         minStakeAmount = 100 * 1e18;
         installmentNum = installmentCount;
@@ -81,10 +78,9 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
 
 
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner, uint256 _amount) external {
+    function stake(address owner, uint256 _amount) external payable{
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
-        token.safeTransferFrom(msg.sender, address(this), _amount);
         totalCollateral += _amount;
         stakeRecords.push(
             StakeInfo({
@@ -101,7 +97,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         emit Stake(owner, _amount, block.timestamp, lockPeriod);
     }
 
-    function unstake(uint256 _index) external returns (uint256) {
+    function unstake(uint256 _index) external  returns (uint256) {
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         require(block.timestamp >= _stake.startTime + _stake.lockPeriod, "Lock period not ended");
@@ -110,7 +106,7 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         return 0;
     }
 
-    function claimRewards(uint256 _index) external returns (uint256){
+    function claimRewards(uint256 _index) external  returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         //require(_stake.owner == msg.sender || _stake.owner == beneficiary.owner, "Not owner or Beneficiary");
@@ -120,7 +116,8 @@ contract StakeCore is IStakeCore, ReentrancyGuard {
         _stake.claimedRewards += toBeClaimed;
         _stake.lockedRewards -= toBeClaimed;
         totalClaimedRewards += toBeClaimed;
-        token.safeTransfer(_stake.owner, toBeClaimed);
+        (bool success,)=payable(_stake.owner).call{value:toBeClaimed}("");
+        require(success,"transfer failed");
         emit RewardsClaimed(_stake.owner, toBeClaimed, _index);
         return toBeClaimed;
     }
