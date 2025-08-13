@@ -4,26 +4,22 @@ pragma solidity ^0.8.20;
 import {IStakeCore} from "./StakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title POS Stake Core Contract
  * @notice
  */
-contract ShareCore2 {
+contract ShareCore_TokenCollector is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     error NotAdmin(address caller);
+    error NotHolder(address);
     error ShareNotRegistered(uint256 shareID);
     error HolderAlreadyExists();
-    error NotHolder(address);
     error StakeCoreAlreadySet();
     error ZeroAddress();
-
-    error InvalidGatherTime(uint256 gatherT, uint256 start, uint256 end);
     error StartTimeOutOfRange(uint256 startTime, uint256 shareStart, uint256 shareEnd);
-    error HolderStartInFuture(uint256 startTime);
-
-
     error InsufficientUnallocatedPrincipal();
     error InsufficientUnallocatedRewards();
     error AmountExceedsWithdrawable(uint256 amount, uint256 withdrawable);
@@ -31,7 +27,6 @@ contract ShareCore2 {
     error InsufficientRewards();
     error NoRewards();
     error NoPrincipal();
-    error InsufficientTokenBalance(uint256 need, uint256 bal);
 
     struct ShareholderInfo {
         address owner;
@@ -83,6 +78,7 @@ contract ShareCore2 {
 
     event RewardsCollected(uint256 amount);
     event RewardsDistributed(uint256 totalRewards);
+    event Gathered();
 
     constructor(address _admin, address _stakeCore) {
         if (_admin == address(0)) revert ZeroAddress();
@@ -99,7 +95,7 @@ contract ShareCore2 {
         _;
     }
 
-    function registerStakeCore(address _stakeCore) external onlyAdmin {
+    function registerStakeCore(address _stakeCore) external onlyAdmin nonReentrant {
         if (address(stakeCore) != address(0)) revert StakeCoreAlreadySet();
         if (_stakeCore == address(0)) revert ZeroAddress();
 
@@ -107,10 +103,10 @@ contract ShareCore2 {
         token = stakeCore.token();
     }
 
-    function accrueRewards(uint256 _shareID, uint256 gatherT) external {
+    function accrueRewards(uint256 _shareID, uint256 gatherT) external nonReentrant {
         ShareInfo memory shareInfo = sharesInfo[_shareID];
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
-        if (gatherT <= shareInfo.startTime || gatherT > shareInfo.endTime) revert InvalidGatherTime(gatherT, shareInfo.startTime, shareInfo.endTime);
+        if (gatherT <= shareInfo.startTime || gatherT > shareInfo.endTime || gatherT > block.timestamp) revert StartTimeOutOfRange(gatherT, shareInfo.startTime, shareInfo.endTime);
 
         uint256 ungrantedReward = shareInfo.totalReward - shareInfo.grantedReward;
         uint256 gatheringReward = ungrantedReward * (gatherT - shareInfo.startTime) / (shareInfo.endTime - shareInfo.startTime);
@@ -121,7 +117,7 @@ contract ShareCore2 {
         shareInfo_storage.startTime = gatherT;
     }
 
-    function gather(uint256 _shareID, uint256 amount) external onlyAdmin {
+    function gather(uint256 _shareID, uint256 amount) external onlyAdmin nonReentrant {
         ShareInfo memory shareInfo = sharesInfo[_shareID];
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
         if (amount > shareInfo.gatheringReward) revert AmountExceedsWithdrawable(amount, shareInfo.gatheringReward);
@@ -139,7 +135,7 @@ contract ShareCore2 {
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
 
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.principal) revert InsufficientUnallocatedPrincipal();
-        if (shareInfo.startTime > _startTime || shareInfo.endTime <= _startTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
+        if (_startTime <= shareInfo.startTime || _startTime > shareInfo.endTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
 
         uint256 gatheringReward = _grantedReward * (_startTime - shareInfo.startTime) / (shareInfo.endTime - _startTime);
         if (shareInfo.grantedReward + _grantedReward + gatheringReward > shareInfo.totalReward) revert InsufficientUnallocatedRewards();
@@ -165,7 +161,7 @@ contract ShareCore2 {
         emit ShareholderAdded(_owner, _startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function register() external {
+    function register() external nonReentrant {
         uint256[] memory _shareIDs = stakeCore.getUserStakeIndexes(address(this));
         if (_shareIDs.length == shareIDs.length) {
             return;
@@ -193,7 +189,7 @@ contract ShareCore2 {
         }
     }
 
-    function ClaimStakeRewardsBatch() external {
+    function ClaimStakeRewardsBatch() external nonReentrant {
         uint256 length = shareIDs.length;
         uint256[] memory amounts = new uint256[](length);
         for (uint256 i = 0; i < length; i++) {
@@ -209,21 +205,21 @@ contract ShareCore2 {
         emit StakeRewardsClaimedBatch(amounts);
     }
 
-    function ClaimStakeRewards(uint256 _shareID) external {
+    function ClaimStakeRewards(uint256 _shareID) external nonReentrant {
         if (!sharesInfo[_shareID].isSet) revert ShareNotRegistered(_shareID);
         uint256 amount = stakeCore.claimRewards(_shareID);
         sharesInfo[_shareID].claimedReward += amount;
         emit StakeRewardsClaimed(_shareID, amount);
     }
 
-    function ClaimStakePrincipal(uint256 _shareID) external {
+    function ClaimStakePrincipal(uint256 _shareID) external nonReentrant {
         if (!sharesInfo[_shareID].isSet) revert ShareNotRegistered(_shareID);
         uint256 amount = stakeCore.unstake(_shareID);
         sharesInfo[_shareID].claimedPrincipal += amount;
         emit StakePrincipalClaimed(_shareID, amount);
     }
 
-    function claimRewards(uint256 _shareID) external {
+    function claimRewards(uint256 _shareID) external nonReentrant {
         ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
         if (info.owner != msg.sender) revert NotHolder(msg.sender);
         ShareInfo storage shareInfo = sharesInfo[info.shareID];
@@ -242,7 +238,7 @@ contract ShareCore2 {
         emit RewardsClaimed(msg.sender, claimableReward);
     }
 
-    function claimPrincipal(uint256 _shareID) external {
+    function claimPrincipal(uint256 _shareID) external nonReentrant {
         ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
         if (info.owner != msg.sender) revert NotHolder(msg.sender);
         uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareID);

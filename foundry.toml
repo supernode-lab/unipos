@@ -7,7 +7,7 @@ test="test"
 script = "scripts"
 libs = ["lib"]
 solc_version = "0.8.24"
-evm_version = "london"
+evm_version = "cancun"
 fs_permissions = [
   { access = "read-write", path = "./deployments" },
   { access = "read", path = "./out" },
