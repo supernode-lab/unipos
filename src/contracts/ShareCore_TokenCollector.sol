@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import {ReentrancyGuard} from "../verification/ReentrancyGuard.sol";
 import {IStakeCore} from "./StakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -270,13 +272,13 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         uint256 totalReward;
         uint256 shareIDsLength = shareIDs.length;
         for (uint256 i = 0; i < shareIDsLength; i++) {
-            totalReward += (sharesInfo[shareIDs[i]].claimedReward + sharesInfo[shareIDs[i]].claimedPrincipal);
+            totalReward += (sharesInfo[shareIDs[i]].claimedReward + sharesInfo[shareIDs[i]].claimedPrincipal - sharesInfo[shareIDs[i]].withdrawnReward);
         }
 
         uint256 shareholdersLength = shareholders.length;
         for (uint256 i = 0; i < shareholdersLength; i++) {
             bytes32 key = _getShareHolderKeyHash(shareholders[i].owner, shareholders[i].shareID);
-            totalReward -= (shareholdersInfo[key].withdrawnReward + shareholdersInfo[key].withdrawnPrincipal);
+            totalReward -= (shareholdersInfo[key].withdrawnPrincipal);
         }
 
         require(balance >= totalReward, "Not enough token");
