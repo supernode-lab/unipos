@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {SignedCredential} from "../Types/Structs/Credentials.sol";
 import {BaseCredential} from "../base/baseCredential.sol";
-import {IStakeCore} from "./StakeCore.sol";
+import {IStakeCore} from "./interfaces/IStakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -11,7 +11,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
  * @title POS Stake Core Contract
  * @notice
  */
-contract Subscription is BaseCredential {
+contract ShareCore_Subscription is BaseCredential {
     using SafeERC20 for IERC20;
 
     struct ShareholderInfo {
