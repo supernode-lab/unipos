@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {SignedCredential} from "../Types/Structs/Credentials.sol";
-import {BaseCredential} from "../base/baseCredential.sol";
+import {SignedCredential} from "../../Types/Structs/Credentials.sol";
+import {BaseCredential} from "../../base/baseCredential.sol";
 import {IStakeCore} from "./interfaces/IStakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title POS Stake Core Contract
  * @notice
  */
-contract ShareCore_Subscription is BaseCredential {
+contract ShareCore_Subscription is BaseCredential, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     struct ShareholderInfo {
@@ -80,14 +81,14 @@ contract ShareCore_Subscription is BaseCredential {
         usdt = IERC20(usdtContAddr);
     }
 
-    function withdrawUSDT(uint256 amount) external onlyAdmin {
+    function withdrawUSDT(uint256 amount) external onlyAdmin nonReentrant {
         require(amount + withdrawnUsdt <= depositedUsdt, "Remaining USDT is insufficient");
         withdrawnUsdt += amount;
         usdt.safeTransfer(msg.sender, amount);
         emit USDTWithdrawn(msg.sender, amount);
     }
 
-    function withdrawToken(uint256 amount) external onlyAdmin {
+    function withdrawToken(uint256 amount) external onlyAdmin nonReentrant {
         require(amount + withdrawnToken <= depositedToken, "Remaining Token is insufficient");
         withdrawnToken += amount;
         token.safeTransfer(msg.sender, amount);
@@ -109,7 +110,7 @@ contract ShareCore_Subscription is BaseCredential {
         uint256 _grantedPrincipal,
         SignedCredential calldata sc
     )
-    validateAndBurnCred(sc, abi.encode(_owner, _shareID, amount, _grantedReward, _grantedPrincipal)) external {
+    validateAndBurnCred(sc, abi.encode(_owner, _shareID, amount, _grantedReward, _grantedPrincipal)) nonReentrant external {
         require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
 
         depositedUsdt += amount;
@@ -126,7 +127,7 @@ contract ShareCore_Subscription is BaseCredential {
         uint256 _grantedPrincipal,
         SignedCredential calldata sc
     )
-    validateAndBurnCred(sc, abi.encode(_owner, _shareID, amount, _grantedReward, _grantedPrincipal)) external {
+    validateAndBurnCred(sc, abi.encode(_owner, _shareID, amount, _grantedReward, _grantedPrincipal)) nonReentrant external {
         require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
 
         depositedToken += amount;
@@ -209,10 +210,10 @@ contract ShareCore_Subscription is BaseCredential {
             shareIDs.push(shareID);
         }
 
-        emit Registered(newShareIDs,totalRewards,principals);
+        emit Registered(newShareIDs, totalRewards, principals);
     }
 
-    function ClaimStakeRewardsBatch() external {
+    function ClaimStakeRewardsBatch() external nonReentrant{
         uint256 length = shareIDs.length;
         uint256[] memory amounts = new uint256[](length);
         for (uint256 i = 0; i < length; i++) {
@@ -228,21 +229,21 @@ contract ShareCore_Subscription is BaseCredential {
         emit StakeRewardsClaimedBatch(amounts);
     }
 
-    function ClaimStakeRewards(uint256 _shareID) external {
+    function ClaimStakeRewards(uint256 _shareID) external nonReentrant{
         require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
         uint256 amount = stakeCore.claimRewards(_shareID);
         sharesInfo[_shareID].claimedReward += amount;
         emit StakeRewardsClaimed(_shareID, amount);
     }
 
-    function ClaimStakePrincipal(uint256 _shareID) external {
+    function ClaimStakePrincipal(uint256 _shareID) external nonReentrant{
         require(sharesInfo[_shareID].isSet, "the shareID has not registered yet");
         uint256 amount = stakeCore.unstake(_shareID);
         sharesInfo[_shareID].claimedPrincipal += amount;
         emit StakePrincipalClaimed(_shareID, amount);
     }
 
-    function claimRewards(uint256 _shareID) external {
+    function claimRewards(uint256 _shareID) external nonReentrant{
         ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
         require(info.owner == msg.sender, "Not a shareholder");
 //require(info.grantedReward > info.claimedReward, "No rewards");
@@ -255,7 +256,7 @@ contract ShareCore_Subscription is BaseCredential {
         emit RewardsClaimed(msg.sender, _shareID, claimableReward);
     }
 
-    function claimPrincipal(uint256 _shareID) external {
+    function claimPrincipal(uint256 _shareID) external nonReentrant{
         ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
         require(info.owner == msg.sender, "Not a shareholder");
 //require(info.grantedReward > info.claimedReward, "No rewards");
@@ -276,7 +277,7 @@ contract ShareCore_Subscription is BaseCredential {
         return _shareholderGrantedPrincipal * sharesInfo[shareID].claimedPrincipal / sharesInfo[shareID].principal;
     }
 
-    function collect() external onlyAdmin returns (uint256) {
+    function collect() external onlyAdmin nonReentrant returns (uint256) {
 //  withdraw extra token from this contract
         uint256 balance = token.balanceOf(address(this));
         uint256 totalReward;
@@ -298,10 +299,10 @@ contract ShareCore_Subscription is BaseCredential {
         return balance - totalReward;
     }
 
-    function collectUSDT() external onlyAdmin returns (uint256) {
+    function collectUSDT() external onlyAdmin nonReentrant returns (uint256) {
 //  withdraw extra token from this contract
         uint256 balance = usdt.balanceOf(address(this));
-        uint256 remain=depositedUsdt - withdrawnUsdt;
+        uint256 remain = depositedUsdt - withdrawnUsdt;
 
 
         require(balance > remain, "Not enough token");

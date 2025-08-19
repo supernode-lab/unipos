@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ShareCore} from "../../src/contracts/ShareCore.sol";
-import {StakeCore} from "../../src/contracts/StakeCore.sol";
+import {ShareCore} from "../../src/contracts/erc20/ShareCore.sol";
+import {StakeCore} from "../../src/contracts/erc20/StakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CommonBase} from "forge-std/Base.sol";
 import {Script} from "forge-std/Script.sol";
