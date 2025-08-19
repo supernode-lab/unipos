@@ -34,7 +34,7 @@ contract NativeShareCore {
         uint256 grantedPrincipal;
     }
 
-    INativeStakeCore  immutable  stakeCore;
+    INativeStakeCore public immutable  stakeCore;
     address public admin;
 
     uint256[] public shareIDs;
@@ -215,10 +215,7 @@ contract NativeShareCore {
         return shareholdersInfo[_getShareHolderKeyHash(_shareholder, shareID)];
     }
 
-
     function _getShareHolderKeyHash(address owner, uint256 shareID) internal pure returns (bytes32) {
         return keccak256(abi.encode(owner, shareID));
     }
-
-
 }
