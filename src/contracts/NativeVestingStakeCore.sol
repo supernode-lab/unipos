@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {INativeStakeCore} from "./interfaces/INativeStakeCore.sol";
 
 
@@ -15,9 +12,6 @@ import {INativeStakeCore} from "./interfaces/INativeStakeCore.sol";
  * @notice
  */
 contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
-    using SafeERC20 for IERC20;
-    using Math for uint256;
-
     // Events
     event Stake(address indexed staker, uint256 amount, uint256 startTime, uint256 lockPeriod);
     event RewardsClaimed(address indexed staker, uint256 amount, uint256 index);
