@@ -135,7 +135,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
 
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.principal) revert InsufficientUnallocatedPrincipal();
-        if (_startTime <= shareInfo.startTime || _startTime > shareInfo.endTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
+        if (_startTime < shareInfo.startTime || _startTime > shareInfo.endTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
 
         uint256 gatheringReward = _grantedReward * (_startTime - shareInfo.startTime) / (shareInfo.endTime - _startTime);
         if (shareInfo.grantedReward + _grantedReward + gatheringReward > shareInfo.totalReward) revert InsufficientUnallocatedRewards();
