@@ -129,13 +129,20 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         token.safeTransfer(msg.sender, amount);
     }
 
+    function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
+        _addShareholder(_owner, _shareID, sharesInfo[_shareID].startTime, _grantedReward, _grantedPrincipal);
+    }
 
-    function addShareholder(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
+    function addShareholder2(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
+        _addShareholder(_owner, _shareID, _startTime, _grantedReward, _grantedPrincipal);
+    }
+
+    function _addShareholder(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) private {
         ShareInfo memory shareInfo = sharesInfo[_shareID];
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
 
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.principal) revert InsufficientUnallocatedPrincipal();
-        if (_startTime < shareInfo.startTime || _startTime > shareInfo.endTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
+        if (_startTime < shareInfo.startTime || _startTime >= shareInfo.endTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
 
         uint256 gatheringReward = _grantedReward * (_startTime - shareInfo.startTime) / (shareInfo.endTime - _startTime);
         if (shareInfo.grantedReward + _grantedReward + gatheringReward > shareInfo.totalReward) revert InsufficientUnallocatedRewards();
@@ -160,6 +167,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
 
         emit ShareholderAdded(_owner, _startTime, _grantedReward, _grantedPrincipal);
     }
+
 
     function register() external nonReentrant {
         uint256[] memory _shareIDs = stakeCore.getUserStakeIndexes(address(this));
