@@ -2,6 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {IStakeCore} from "./interfaces/IStakeCore.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -10,7 +12,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @title POS Stake Core Contract
  * @notice
  */
-contract ShareCore_TokenCollector is ReentrancyGuard {
+contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
     using SafeERC20 for IERC20;
 
     error NotAdmin(address caller);
@@ -59,7 +61,6 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
 
     IStakeCore  public  stakeCore;
     IERC20 public  token;
-    address public admin;
 
     uint256[] public shareIDs;
     mapping(uint256 => ShareInfo) public sharesInfo;
@@ -80,22 +81,14 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
     event RewardsDistributed(uint256 totalRewards);
     event Gathered();
 
-    constructor(address _admin, address _stakeCore) {
-        if (_admin == address(0)) revert ZeroAddress();
-
-        admin = _admin;
+    constructor(address owner, address _stakeCore)  Ownable(owner){
         if (_stakeCore != address(0)) {
             stakeCore = IStakeCore(_stakeCore);
             token = stakeCore.token();
         }
     }
 
-    modifier onlyAdmin() {
-        if (msg.sender != admin) revert NotAdmin(msg.sender);
-        _;
-    }
-
-    function registerStakeCore(address _stakeCore) external onlyAdmin nonReentrant {
+    function registerStakeCore(address _stakeCore) external onlyOwner nonReentrant {
         if (address(stakeCore) != address(0)) revert StakeCoreAlreadySet();
         if (_stakeCore == address(0)) revert ZeroAddress();
 
@@ -103,7 +96,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         token = stakeCore.token();
     }
 
-    function accrueRewards(uint256 _shareID, uint256 gatherT) external nonReentrant {
+    function accrueRewards(uint256 _shareID, uint256 gatherT) external onlyOwner nonReentrant {
         ShareInfo memory shareInfo = sharesInfo[_shareID];
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
         if (gatherT <= shareInfo.startTime || gatherT > shareInfo.endTime || gatherT > block.timestamp) revert StartTimeOutOfRange(gatherT, shareInfo.startTime, shareInfo.endTime);
@@ -117,7 +110,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         shareInfo_storage.startTime = gatherT;
     }
 
-    function gather(uint256 _shareID, uint256 amount) external onlyAdmin nonReentrant {
+    function gather(uint256 _shareID, uint256 amount) external onlyOwner nonReentrant {
         ShareInfo memory shareInfo = sharesInfo[_shareID];
         if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
         if (amount > shareInfo.gatheringReward) revert AmountExceedsWithdrawable(amount, shareInfo.gatheringReward);
@@ -129,11 +122,11 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         token.safeTransfer(msg.sender, amount);
     }
 
-    function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
+    function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
         _addShareholder(_owner, _shareID, sharesInfo[_shareID].startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function addShareholder2(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyAdmin {
+    function addShareholder2(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
         _addShareholder(_owner, _shareID, _startTime, _grantedReward, _grantedPrincipal);
     }
 
@@ -167,7 +160,6 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
 
         emit ShareholderAdded(_owner, _startTime, _grantedReward, _grantedPrincipal);
     }
-
 
     function register() external nonReentrant {
         uint256[] memory _shareIDs = stakeCore.getUserStakeIndexes(address(this));
@@ -257,7 +249,6 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         emit PrincipalClaimed(msg.sender, claimablePrincipal);
     }
 
-
     function calculateShareholderRewards(ShareholderInfo memory holderinfo, uint256 shareEndTime) internal view returns (uint256){
         uint256 endTime = block.timestamp < shareEndTime ? block.timestamp : shareEndTime;
         if (endTime <= holderinfo.startTime) {
@@ -272,7 +263,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         return _shareholderGrantedPrincipal * sharesInfo[shareID].claimedPrincipal / sharesInfo[shareID].principal;
     }
 
-    function collect() external onlyAdmin returns (uint256) {
+    function collect() external onlyOwner nonReentrant returns (uint256) {
         //  withdraw extra token from this contract
         uint256 balance = token.balanceOf(address(this));
         uint256 totalReward;
@@ -288,7 +279,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
         }
 
         require(balance >= totalReward, "Not enough token");
-        token.safeTransfer(admin, balance - totalReward);
+        token.safeTransfer(owner(), balance - totalReward);
         emit RewardsCollected(balance - totalReward);
         return balance - totalReward;
     }
@@ -296,7 +287,6 @@ contract ShareCore_TokenCollector is ReentrancyGuard {
     function getShareholderInfo(address _shareholder, uint256 shareID) public view returns (ShareholderInfo memory) {
         return shareholdersInfo[_getShareHolderKeyHash(_shareholder, shareID)];
     }
-
 
     function _getShareHolderKeyHash(address owner, uint256 shareID) internal pure returns (bytes32) {
         return keccak256(abi.encode(owner, shareID));
