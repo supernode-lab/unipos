@@ -12,12 +12,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @title POS Stake Core Contract
  * @notice
  */
-contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
+contract ShareCore_TokenCollector is ReentrancyGuard, Ownable2Step {
     using SafeERC20 for IERC20;
 
     error NotAdmin(address caller);
     error NotHolder(address);
-    error ShareNotRegistered(uint256 shareID);
+    error ShareNotRegistered(uint256 shareId);
     error HolderAlreadyExists();
     error StakeCoreAlreadySet();
     error ZeroAddress();
@@ -32,7 +32,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
 
     struct ShareholderInfo {
         address owner;
-        uint256 shareID;
+        uint256 shareId;
         uint256 startTime;
         uint256 grantedReward;
         uint256 withdrawnReward;
@@ -42,7 +42,7 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
 
     struct ShareHolderKey {
         address owner;
-        uint256 shareID;
+        uint256 shareId;
     }
 
     struct ShareInfo {
@@ -62,24 +62,27 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
     IStakeCore  public  stakeCore;
     IERC20 public  token;
 
-    uint256[] public shareIDs;
+    uint256[] public shareIds;
     mapping(uint256 => ShareInfo) public sharesInfo;
 
     ShareHolderKey[] public shareholders;
     mapping(bytes32 => ShareholderInfo) public shareholdersInfo;
 
     // Events
-    event ShareholderAdded(address indexed shareholder, uint256 startTime, uint256 grantedReward, uint256 grantedPrincipal);
-    event StakeRewardsClaimed(uint256 shareIDs, uint256 amount);
+    event RewardsAccrued(uint256 shareId, uint256 gatherT, uint256 gatheringReward);
+    event Registered(uint256[] shareIds);
+    event ShareholderAdded(address  shareholder, uint256 shareId, uint256 startTime, uint256 grantedReward, uint256 grantedPrincipal);
+    event StakeRewardsClaimed(uint256 shareId, uint256 amount);
     event StakeRewardsClaimedBatch(uint256[] amount);
 
-    event StakePrincipalClaimed(uint256 shareIDs, uint256 amount);
-    event RewardsClaimed(address indexed shareholder, uint256 amount);
-    event PrincipalClaimed(address indexed shareholder, uint256 amount);
+    event StakePrincipalClaimed(uint256 shareId, uint256 amount);
+    event RewardsClaimed(address  shareholder, uint256 shareId, uint256 amount);
+    event PrincipalClaimed(address  shareholder,  uint256 shareId, uint256 amount);
 
     event RewardsCollected(uint256 amount);
     event RewardsDistributed(uint256 totalRewards);
-    event Gathered();
+    event Gathered(uint256 shareId, uint256 amount);
+
 
     constructor(address owner, address _stakeCore)  Ownable(owner){
         if (_stakeCore != address(0)) {
@@ -96,82 +99,86 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
         token = stakeCore.token();
     }
 
-    function accrueRewards(uint256 _shareID, uint256 gatherT) external onlyOwner nonReentrant {
-        ShareInfo memory shareInfo = sharesInfo[_shareID];
-        if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
+    function accrueRewards(uint256 _shareId, uint256 gatherT) external onlyOwner nonReentrant {
+        ShareInfo memory shareInfo = sharesInfo[_shareId];
+        if (!shareInfo.isSet) revert ShareNotRegistered(_shareId);
         if (gatherT <= shareInfo.startTime || gatherT > shareInfo.endTime || gatherT > block.timestamp) revert StartTimeOutOfRange(gatherT, shareInfo.startTime, shareInfo.endTime);
 
         uint256 ungrantedReward = shareInfo.totalReward - shareInfo.grantedReward;
         uint256 gatheringReward = ungrantedReward * (gatherT - shareInfo.startTime) / (shareInfo.endTime - shareInfo.startTime);
 
-        ShareInfo storage shareInfo_storage = sharesInfo[_shareID];
+        ShareInfo storage shareInfo_storage = sharesInfo[_shareId];
         shareInfo_storage.grantedReward += gatheringReward;
         shareInfo_storage.gatheringReward += gatheringReward;
         shareInfo_storage.startTime = gatherT;
+        emit RewardsAccrued(_shareId, gatherT, gatheringReward);
     }
 
-    function gather(uint256 _shareID, uint256 amount) external onlyOwner nonReentrant {
-        ShareInfo memory shareInfo = sharesInfo[_shareID];
-        if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
+    function gather(uint256 _shareId, uint256 amount) external onlyOwner nonReentrant {
+        ShareInfo memory shareInfo = sharesInfo[_shareId];
+        if (!shareInfo.isSet) revert ShareNotRegistered(_shareId);
         if (amount > shareInfo.gatheringReward) revert AmountExceedsWithdrawable(amount, shareInfo.gatheringReward);
 
         uint256 withdrawableReward = shareInfo.claimedReward - shareInfo.withdrawnReward;
         if (amount > withdrawableReward) revert AmountExceedsBalance(amount, withdrawableReward);
-        sharesInfo[_shareID].withdrawnReward += amount;
-        sharesInfo[_shareID].gatheringReward -= amount;
+        sharesInfo[_shareId].withdrawnReward += amount;
+        sharesInfo[_shareId].gatheringReward -= amount;
         token.safeTransfer(msg.sender, amount);
+        emit Gathered(_shareId, amount);
     }
 
-    function addShareholder(address _owner, uint256 _shareID, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
-        _addShareholder(_owner, _shareID, sharesInfo[_shareID].startTime, _grantedReward, _grantedPrincipal);
+    function addShareholder(address _owner, uint256 _shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
+        _addShareholder(_owner, _shareId, sharesInfo[_shareId].startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function addShareholder2(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
-        _addShareholder(_owner, _shareID, _startTime, _grantedReward, _grantedPrincipal);
+    function addShareholder2(address _owner, uint256 _shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
+        _addShareholder(_owner, _shareId, _startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function _addShareholder(address _owner, uint256 _shareID, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) private {
-        ShareInfo memory shareInfo = sharesInfo[_shareID];
-        if (!shareInfo.isSet) revert ShareNotRegistered(_shareID);
+    function _addShareholder(address _owner, uint256 _shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) private {
+        ShareInfo memory shareInfo = sharesInfo[_shareId];
+        if (!shareInfo.isSet) revert ShareNotRegistered(_shareId);
 
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.principal) revert InsufficientUnallocatedPrincipal();
         if (_startTime < shareInfo.startTime || _startTime >= shareInfo.endTime || _startTime > block.timestamp) revert StartTimeOutOfRange(_startTime, shareInfo.startTime, shareInfo.endTime);
 
         uint256 gatheringReward = _grantedReward * (_startTime - shareInfo.startTime) / (shareInfo.endTime - _startTime);
         if (shareInfo.grantedReward + _grantedReward + gatheringReward > shareInfo.totalReward) revert InsufficientUnallocatedRewards();
-        if (shareholdersInfo[_getShareHolderKeyHash(_owner, _shareID)].owner != address(0)) revert HolderAlreadyExists();
+        if (shareholdersInfo[_getShareHolderKeyHash(_owner, _shareId)].owner != address(0)) revert HolderAlreadyExists();
         shareholders.push(ShareHolderKey({
             owner: _owner,
-            shareID: _shareID
+            shareId: _shareId
         }));
 
-        shareholdersInfo[_getShareHolderKeyHash(_owner, _shareID)] = ShareholderInfo({
+        shareholdersInfo[_getShareHolderKeyHash(_owner, _shareId)] = ShareholderInfo({
             owner: _owner,
-            shareID: _shareID,
+            shareId: _shareId,
             startTime: _startTime,
             grantedReward: _grantedReward,
             withdrawnReward: 0,
             grantedPrincipal: _grantedPrincipal,
             withdrawnPrincipal: 0
         });
-        sharesInfo[_shareID].gatheringReward += gatheringReward;
-        sharesInfo[_shareID].grantedReward += (_grantedReward + gatheringReward);
-        sharesInfo[_shareID].grantedPrincipal += _grantedPrincipal;
+        sharesInfo[_shareId].gatheringReward += gatheringReward;
+        sharesInfo[_shareId].grantedReward += (_grantedReward + gatheringReward);
+        sharesInfo[_shareId].grantedPrincipal += _grantedPrincipal;
 
-        emit ShareholderAdded(_owner, _startTime, _grantedReward, _grantedPrincipal);
+        emit ShareholderAdded(_owner, _shareId, _startTime, _grantedReward, _grantedPrincipal);
     }
 
     function register() external nonReentrant {
-        uint256[] memory _shareIDs = stakeCore.getUserStakeIndexes(address(this));
-        if (_shareIDs.length == shareIDs.length) {
+        uint256[] memory _shareIds = stakeCore.getUserStakeIndexes(address(this));
+        uint256 curShareIdsLen = shareIds.length;
+        if (_shareIds.length == curShareIdsLen) {
             return;
         }
 
-        for (uint256 i = shareIDs.length; i < _shareIDs.length; i++) {
-            uint256 shareID = _shareIDs[i];
-            IStakeCore.StakeInfo memory stakeInfo = stakeCore.getStakeRecords(shareID);
+        uint256[] memory newShareIds = new uint256[](_shareIds.length - curShareIdsLen);
+        for (uint256 i = curShareIdsLen; i < _shareIds.length; i++) {
+            uint256 shareId = _shareIds[i];
+            IStakeCore.StakeInfo memory stakeInfo = stakeCore.getStakeRecords(shareId);
 
-            sharesInfo[shareID] = ShareInfo({
+            sharesInfo[shareId] = ShareInfo({
                 isSet: true,
                 startTime: stakeInfo.startTime,
                 endTime: stakeInfo.startTime + stakeInfo.lockPeriod,
@@ -185,17 +192,20 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
                 claimedPrincipal: 0
             });
 
-            shareIDs.push(shareID);
+            shareIds.push(shareId);
+            newShareIds[i - curShareIdsLen] = shareId;
         }
+
+        emit Registered(newShareIds);
     }
 
-    function ClaimStakeRewardsBatch() external nonReentrant {
-        uint256 length = shareIDs.length;
+    function claimStakeRewardsBatch() external nonReentrant {
+        uint256 length = shareIds.length;
         uint256[] memory amounts = new uint256[](length);
         for (uint256 i = 0; i < length; i++) {
-            uint256 _shareID = shareIDs[i];
-            try stakeCore.claimRewards(_shareID)returns (uint256 amount){
-                sharesInfo[_shareID].claimedReward += amount;
+            uint256 _shareId = shareIds[i];
+            try stakeCore.claimRewards(_shareId)returns (uint256 amount){
+                sharesInfo[_shareId].claimedReward += amount;
                 amounts[i] = amount;
             }catch{
 
@@ -205,24 +215,24 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
         emit StakeRewardsClaimedBatch(amounts);
     }
 
-    function ClaimStakeRewards(uint256 _shareID) external nonReentrant {
-        if (!sharesInfo[_shareID].isSet) revert ShareNotRegistered(_shareID);
-        uint256 amount = stakeCore.claimRewards(_shareID);
-        sharesInfo[_shareID].claimedReward += amount;
-        emit StakeRewardsClaimed(_shareID, amount);
+    function claimStakeRewards(uint256 _shareId) external nonReentrant {
+        if (!sharesInfo[_shareId].isSet) revert ShareNotRegistered(_shareId);
+        uint256 amount = stakeCore.claimRewards(_shareId);
+        sharesInfo[_shareId].claimedReward += amount;
+        emit StakeRewardsClaimed(_shareId, amount);
     }
 
-    function ClaimStakePrincipal(uint256 _shareID) external nonReentrant {
-        if (!sharesInfo[_shareID].isSet) revert ShareNotRegistered(_shareID);
-        uint256 amount = stakeCore.unstake(_shareID);
-        sharesInfo[_shareID].claimedPrincipal += amount;
-        emit StakePrincipalClaimed(_shareID, amount);
+    function claimStakePrincipal(uint256 _shareId) external nonReentrant {
+        if (!sharesInfo[_shareId].isSet) revert ShareNotRegistered(_shareId);
+        uint256 amount = stakeCore.unstake(_shareId);
+        sharesInfo[_shareId].claimedPrincipal += amount;
+        emit StakePrincipalClaimed(_shareId, amount);
     }
 
-    function claimRewards(uint256 _shareID) external nonReentrant {
-        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
+    function claimRewards(uint256 _shareId) external nonReentrant {
+        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareId)];
         if (info.owner != msg.sender) revert NotHolder(msg.sender);
-        ShareInfo storage shareInfo = sharesInfo[info.shareID];
+        ShareInfo storage shareInfo = sharesInfo[info.shareId];
         uint256 claimableTotalReward = calculateShareholderRewards(info, shareInfo.endTime);
         if (claimableTotalReward <= info.withdrawnReward) revert NoRewards();
         uint256 claimableReward = claimableTotalReward - info.withdrawnReward;
@@ -235,18 +245,18 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
         info.withdrawnReward += claimableReward;
         shareInfo.withdrawnReward += claimableReward;
         token.safeTransfer(msg.sender, claimableReward);
-        emit RewardsClaimed(msg.sender, claimableReward);
+        emit RewardsClaimed(msg.sender, _shareId, claimableReward);
     }
 
-    function claimPrincipal(uint256 _shareID) external nonReentrant {
-        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareID)];
+    function claimPrincipal(uint256 _shareId) external nonReentrant {
+        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, _shareId)];
         if (info.owner != msg.sender) revert NotHolder(msg.sender);
-        uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareID);
+        uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareId);
         if (claimableTotalPrincipal <= info.withdrawnPrincipal) revert NoPrincipal();
         uint256 claimablePrincipal = claimableTotalPrincipal - info.withdrawnPrincipal;
         info.withdrawnPrincipal = claimableTotalPrincipal;
         token.safeTransfer(msg.sender, claimablePrincipal);
-        emit PrincipalClaimed(msg.sender, claimablePrincipal);
+        emit PrincipalClaimed(msg.sender, _shareId, claimablePrincipal);
     }
 
     function calculateShareholderRewards(ShareholderInfo memory holderinfo, uint256 shareEndTime) internal view returns (uint256){
@@ -259,22 +269,23 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
         return holderinfo.grantedReward * elapsedTime / (shareEndTime - holderinfo.startTime);
     }
 
-    function calculateShareholderPrincipal(uint256 _shareholderGrantedPrincipal, uint256 shareID) internal view returns (uint256){
-        return _shareholderGrantedPrincipal * sharesInfo[shareID].claimedPrincipal / sharesInfo[shareID].principal;
+    function calculateShareholderPrincipal(uint256 _shareholderGrantedPrincipal, uint256 shareId) internal view returns (uint256){
+        return _shareholderGrantedPrincipal * sharesInfo[shareId].claimedPrincipal / sharesInfo[shareId].principal;
     }
 
     function collect() external onlyOwner nonReentrant returns (uint256) {
         //  withdraw extra token from this contract
         uint256 balance = token.balanceOf(address(this));
         uint256 totalReward;
-        uint256 shareIDsLength = shareIDs.length;
-        for (uint256 i = 0; i < shareIDsLength; i++) {
-            totalReward += (sharesInfo[shareIDs[i]].claimedReward + sharesInfo[shareIDs[i]].claimedPrincipal - sharesInfo[shareIDs[i]].withdrawnReward);
+        uint256 shareIdsLength = shareIds.length;
+        for (uint256 i = 0; i < shareIdsLength; i++) {
+            uint256 shareId=shareIds[i];
+            totalReward += (sharesInfo[shareId].claimedReward + sharesInfo[shareId].claimedPrincipal - sharesInfo[shareId].withdrawnReward);
         }
 
         uint256 shareholdersLength = shareholders.length;
         for (uint256 i = 0; i < shareholdersLength; i++) {
-            bytes32 key = _getShareHolderKeyHash(shareholders[i].owner, shareholders[i].shareID);
+            bytes32 key = _getShareHolderKeyHash(shareholders[i].owner, shareholders[i].shareId);
             totalReward -= (shareholdersInfo[key].withdrawnPrincipal);
         }
 
@@ -284,11 +295,11 @@ contract ShareCore_TokenCollector is ReentrancyGuard ,Ownable2Step{
         return balance - totalReward;
     }
 
-    function getShareholderInfo(address _shareholder, uint256 shareID) public view returns (ShareholderInfo memory) {
-        return shareholdersInfo[_getShareHolderKeyHash(_shareholder, shareID)];
+    function getShareholderInfo(address _shareholder, uint256 shareId) public view returns (ShareholderInfo memory) {
+        return shareholdersInfo[_getShareHolderKeyHash(_shareholder, shareId)];
     }
 
-    function _getShareHolderKeyHash(address owner, uint256 shareID) internal pure returns (bytes32) {
-        return keccak256(abi.encode(owner, shareID));
+    function _getShareHolderKeyHash(address owner, uint256 shareId) internal pure returns (bytes32) {
+        return keccak256(abi.encode(owner, shareId));
     }
 }
