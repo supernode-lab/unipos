@@ -54,6 +54,9 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
     event UsdtWithdrawn(uint256 released, uint256 amount);
     event DealSettled(uint256 dealId, uint256 usedToken, uint256 trimmedUsdt, DealStatus status);
 
+    event UsdtCollected(address to,uint256 amount);
+    event TokenCollected(address to ,uint256 amount);
+
     IERC20 public immutable usdt;
     IERC20 public immutable token;
     uint256 public immutable lockPeriod;
@@ -281,9 +284,9 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
 
         uint256 bal = usdt.balanceOf(address(this));
         uint256 required = withdrawableUsdt + lockedUsdt;
-
         require(bal > required, "no surplus usdt");
         usdt.safeTransfer(to, bal - required);
+        emit UsdtCollected(to,bal - required);
     }
 
     function collectToken(address to) external onlyOwner nonReentrant {
@@ -291,9 +294,9 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
 
         uint256 bal = token.balanceOf(address(this));
         uint256 required = lockedToken;
-
         require(bal > required, "no surplus token");
         token.safeTransfer(to, bal - required);
+        emit TokenCollected(to,bal - required);
     }
 
     function dealsLength() external view returns (uint256) {return deals.length;}
