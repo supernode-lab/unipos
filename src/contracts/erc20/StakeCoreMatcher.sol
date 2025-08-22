@@ -39,19 +39,20 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
         uint256 paidUsdt;
         uint256 paidToken;
         StakeParam[] params;
-        DealStatus Status;
+        DealStatus status;
     }
 
-    struct vestingParam {
+    struct VestingParam {
         uint256 amount;
         uint256 expiration;
     }
 
-    event DealCreated(uint256 dealId, uint256 targetUsdt, StakeParam[] stakeParams);
+    event DealCreated(uint256 dealId, uint256 targetUsdt, uint256 targetToken);
     event DealUsdtPaid(uint256 dealId, uint256 amount);
     event DealTokenPaid(uint256 dealId, uint256 amount);
     event DealAborted(uint256 dealId, uint256 usdtAmount, uint256 tokenAmount);
     event UsdtWithdrawn(uint256 released, uint256 amount);
+    event DealSettled(uint256 dealId, uint256 usedToken, uint256 trimmedUsdt, DealStatus status);
 
     IERC20 public immutable usdt;
     IERC20 public immutable token;
@@ -62,10 +63,13 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
 
     uint256 public lockedToken;
     uint256 public lockedUsdt;
-    uint256 public withdrawableUsdt;
-    Deal[] public Deals;
-    vestingParam[]  public vestingSchedule;
+    Deal[] private deals;
+
+    VestingParam[]  private vestingSchedule;
     uint256 public nextVesting;
+    uint256 private withdrawableUsdt;
+
+
 
 
     modifier onlyStaker(){
@@ -108,34 +112,34 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
             if (_token != token) revert IllegalStake();
 
             uint256 minStakeAmount = stakeParams[i].stakecore.minStakeAmount();
-            uint256 stakeMount = stakeParams[i].amount;
-            if (minStakeAmount > stakeMount) revert StakeAmountInsufficient(address(stakeParams[i].stakecore), stakeMount);
+            uint256 stakeAmount = stakeParams[i].amount;
+            if (minStakeAmount > stakeAmount) revert StakeAmountInsufficient(address(stakeParams[i].stakecore), stakeAmount);
 
-            targetToken += stakeMount;
+            targetToken += stakeAmount;
         }
         require(targetToken > 0, "targetTokenAmount=0");
         require(targetUsdt > 0, "targetUsdt=0");
 
-        Deals.push();
-        uint256 dealId = Deals.length - 1;
-        Deal storage deal = Deals[dealId];
+        deals.push();
+        uint256 dealId = deals.length - 1;
+        Deal storage deal = deals[dealId];
         deal.targetUsdt = targetUsdt;
         deal.targetToken = targetToken;
-        deal.Status = DealStatus.Pending;
+        deal.status = DealStatus.Pending;
         for (uint256 i = 0; i < stakeParams.length; i++) {
             deal.params.push(
                 stakeParams[i]
             );
         }
 
-        emit DealCreated(dealId, targetUsdt, stakeParams);
+        emit DealCreated(dealId, targetUsdt, targetToken);
     }
 
     function payToken(uint256 dealId, uint256 amount, bool todo) external onlyProvider nonReentrant {
-        if (dealId >= Deals.length) revert InvalidDealId();
+        if (dealId >= deals.length) revert InvalidDealId();
         if (amount == 0) revert InvalidAmount();
-        Deal storage deal = Deals[dealId];
-        if (deal.Status != DealStatus.Pending) revert IllegalDealStatus(deal.Status);
+        Deal storage deal = deals[dealId];
+        if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         if (deal.paidToken + amount > deal.targetToken) revert TooMuchAmount();
         deal.paidToken += amount;
         lockedToken += amount;
@@ -148,10 +152,10 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
     }
 
     function payUsdt(uint256 dealId, uint256 amount, bool todo) external onlyStaker nonReentrant {
-        if (dealId >= Deals.length) revert InvalidDealId();
+        if (dealId >= deals.length) revert InvalidDealId();
         if (amount == 0) revert InvalidAmount();
-        Deal storage deal = Deals[dealId];
-        if (deal.Status != DealStatus.Pending) revert IllegalDealStatus(deal.Status);
+        Deal storage deal = deals[dealId];
+        if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         if (deal.paidUsdt + amount > deal.targetUsdt) revert TooMuchAmount();
 
         deal.paidUsdt += amount;
@@ -171,42 +175,29 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
     function withdraw(uint256 amount) external onlyProvider nonReentrant returns (bool){
         if (amount == 0) revert InvalidAmount();
 
-        uint256 _nextVesting = nextVesting;
-        uint256 vestingLen = vestingSchedule.length;
-        uint256 cap = _nextVesting + 8;
-        if (vestingLen > cap) vestingLen = cap;
-
-        uint256 releasedUsdt = 0;
-        for (; _nextVesting < vestingLen; _nextVesting++) {
-            if (block.timestamp < vestingSchedule[_nextVesting].expiration) {
-                break;
-            }
-
-            releasedUsdt += vestingSchedule[_nextVesting].amount;
-        }
-
-        if (releasedUsdt != 0) {
-            nextVesting = _nextVesting;
-            lockedUsdt -= releasedUsdt;
-            withdrawableUsdt += releasedUsdt;
+        (uint256 releasableUsdt,uint256 nextIdx) = calcReleasableUsdt();
+        if (releasableUsdt != 0) {
+            nextVesting = nextIdx;
+            lockedUsdt -= releasableUsdt;
+            withdrawableUsdt += releasableUsdt;
         }
 
         if (amount > withdrawableUsdt) {
-            emit UsdtWithdrawn(releasedUsdt, 0);
+            emit UsdtWithdrawn(releasableUsdt, 0);
             return false;
         }
 
         withdrawableUsdt -= amount;
         usdt.safeTransfer(msg.sender, amount);
-        emit UsdtWithdrawn(releasedUsdt, amount);
+        emit UsdtWithdrawn(releasableUsdt, amount);
         return true;
     }
 
     function abort(uint256 dealId) external onlyStakerOrProvider nonReentrant {
-        if (dealId >= Deals.length) revert InvalidDealId();
-        Deal storage deal = Deals[dealId];
-        if (deal.Status != DealStatus.Pending) revert IllegalDealStatus(deal.Status);
-        deal.Status = DealStatus.Abort;
+        if (dealId >= deals.length) revert InvalidDealId();
+        Deal storage deal = deals[dealId];
+        if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
+        deal.status = DealStatus.Abort;
         lockedUsdt -= deal.paidUsdt;
         lockedToken -= deal.paidToken;
         usdt.safeTransfer(staker, deal.paidUsdt);
@@ -214,10 +205,10 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
         emit DealAborted(dealId, deal.paidUsdt, deal.paidToken);
     }
 
-    function _stake(uint256 dealId) internal {
-        if (dealId >= Deals.length) revert InvalidDealId();
-        Deal memory deal = Deals[dealId];
-        if (deal.Status != DealStatus.Pending) revert IllegalDealStatus(deal.Status);
+    function _stake(uint256 dealId) private {
+        if (dealId >= deals.length) revert InvalidDealId();
+        Deal memory deal = deals[dealId];
+        if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         require(deal.paidUsdt > 0, "unpaid usdt");
         require(deal.paidToken > 0, "unpaid token");
 
@@ -232,46 +223,57 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
         }
 
 
+        lockedToken -= deal.paidToken;
+
         uint256 paramsLen = deal.params.length;
         uint256 usedToken = 0;
         for (uint256 i = 0; i < paramsLen; i++) {
             uint256 paidAmount = trimmedToken * deal.params[i].amount / deal.targetToken;
             address spender = address(deal.params[i].stakecore);
-            token.approve(spender, 0);
-            token.approve(spender, paidAmount);
+            bool ok0 = token.approve(spender, 0);
+            bool ok1 = token.approve(spender, paidAmount);
+            require(ok0 && ok1, "approve fail");
             deal.params[i].stakecore.stake(deal.params[i].owner, paidAmount);
             usedToken += paidAmount;
         }
 
-        if (deal.paidUsdt > trimmedUsdt) {
-            usdt.safeTransfer(staker, deal.paidUsdt - trimmedUsdt);
-        }
 
         if (deal.paidToken > usedToken) {
             token.safeTransfer(provider, deal.paidToken - usedToken);
+            deals[dealId].paidToken = usedToken;
         }
 
-        if (deal.targetUsdt == deal.paidUsdt && deal.targetToken == deal.paidToken) {
-            Deals[dealId].Status = DealStatus.Success;
+
+        uint256 leftUsdt = deal.paidUsdt - trimmedUsdt;
+        if (leftUsdt > 0) {
+            usdt.safeTransfer(staker, leftUsdt);
+            deals[dealId].paidUsdt = trimmedUsdt;
+            lockedUsdt -= leftUsdt;
+        }
+
+
+        DealStatus status;
+        if (deal.targetUsdt == trimmedUsdt && deal.targetToken == usedToken) {
+            status = DealStatus.Success;
         } else {
-            Deals[dealId].Status = DealStatus.Partial;
+            status = DealStatus.Partial;
         }
+        deals[dealId].status = status;
 
-        lockedToken -= deal.paidToken;
         if (lockPeriod == 0) {
-            lockedUsdt -= deal.paidUsdt;
+            lockedUsdt -= trimmedUsdt;
             withdrawableUsdt += trimmedUsdt;
         } else {
             vestingSchedule.push(
-                vestingParam({
+                VestingParam({
                     amount: trimmedUsdt,
                     expiration: block.timestamp + lockPeriod
                 }
                 )
             );
-
-            lockedUsdt -= (deal.paidUsdt - trimmedUsdt);
         }
+
+        emit DealSettled(dealId, usedToken, trimmedUsdt, status);
     }
 
     function collectUSDT(address to) external onlyOwner nonReentrant {
@@ -294,7 +296,38 @@ contract StakeCoreMatcher is ReentrancyGuard, Ownable2Step {
         token.safeTransfer(to, bal - required);
     }
 
-    function dealsLength() external view returns (uint256) {return Deals.length;}
+    function dealsLength() external view returns (uint256) {return deals.length;}
 
-    function getDeal(uint256 id) external view returns (Deal memory) {return Deals[id];}
+    function getDeal(uint256 id) external view returns (Deal memory) {return deals[id];}
+
+    function calcWithdrawableUsdt() external view returns (uint256){
+        (uint256 releasableUsdt, uint256 __) = calcReleasableUsdt();
+        return withdrawableUsdt + releasableUsdt;
+    }
+
+    function calcReleasableUsdt() private view returns (uint256, uint256){
+        uint256 _nextVesting = nextVesting;
+        uint256 vestingLen = vestingSchedule.length;
+        uint256 cap = _nextVesting + 8;
+        if (vestingLen > cap) vestingLen = cap;
+
+        uint256 releasableUsdt = 0;
+        for (; _nextVesting < vestingLen; _nextVesting++) {
+            if (block.timestamp < vestingSchedule[_nextVesting].expiration) {
+                break;
+            }
+
+            releasableUsdt += vestingSchedule[_nextVesting].amount;
+        }
+
+        return (releasableUsdt, _nextVesting);
+    }
+
+    function vestingLength() public view returns (uint256){
+        return vestingSchedule.length;
+    }
+
+    function vestingAt(uint256 i) public view returns (VestingParam memory){
+        return vestingSchedule[i];
+    }
 }
