@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {INativeStakeCore} from "./interfaces/INativeStakeCore.sol";
-
-
-
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title POS Stake Core Contract
@@ -35,6 +32,11 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
     INativeStakeCore.StakeInfo[] internal stakeRecords;
     mapping(address => uint256[]) public userStakeIndexes; // 每个用户的质押记录
 
+    constructor(uint256 _lockPeriod, uint256 installmentCount, uint256 _minStakeAmount) {
+        lockPeriod = _lockPeriod;
+        installmentNum = installmentCount;
+        minStakeAmount = _minStakeAmount;
+    }
 
     function getStakeRecords(uint256 _index) external view returns (StakeInfo memory){
         return stakeRecords[_index];
@@ -44,15 +46,8 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
         return userStakeIndexes[owner];
     }
 
-
-    constructor(uint256 _lockPeriod, uint256 installmentCount, uint256 _minStakeAmount) {
-        lockPeriod = _lockPeriod;
-        minStakeAmount = _minStakeAmount;
-        installmentNum = installmentCount;
-    }
-
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner) external payable {
+    function stake(address owner) external payable nonReentrant {
         uint256 _amount = msg.value;
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
@@ -81,7 +76,7 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
         return 0;
     }
 
-    function claimRewards(uint256 _index) external returns (uint256){
+    function claimRewards(uint256 _index) external nonReentrant returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         //require(_stake.owner == msg.sender || _stake.owner == beneficiary.owner, "Not owner or Beneficiary");
@@ -103,14 +98,15 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
         uint256 totalRewards = _stake.claimedRewards + _stake.lockedRewards;
         uint256 elapsedTime = block.timestamp - _stake.startTime;
         // calculate the number of unlocked rewards by installment
-        uint256 unlockedPhase = elapsedTime >= lockPeriod ? installmentNum : (elapsedTime * installmentNum) / lockPeriod;
+        if (elapsedTime >= lockPeriod) {
+            return totalRewards;
+        }
+
+        uint256 unlockedPhase = (elapsedTime * installmentNum) / lockPeriod;
         uint256 unlockedRewardsByInstallment = (totalRewards / installmentNum) * unlockedPhase;
         return unlockedRewardsByInstallment;
     }
 
-    function getStakeInfo(uint256 _index) public view returns (StakeInfo memory) {
-        return stakeRecords[_index];
-    }
 
     function getStakeInfoByAddress(address _staker) public view returns (StakeInfo[] memory) {
         uint256[] memory indexes = userStakeIndexes[_staker];
@@ -121,8 +117,13 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
         return stakeInfo;
     }
 
+    function stakeRecordsLength() public view returns (uint256){
+        return stakeRecords.length;
+    }
+
     // get stake infos by range [start, end)
     function getStakeInfoByPage(uint256 start, uint256 end) public view returns (StakeInfo[] memory) {
+        require(start < end, "invalid param");
         require(end <= stakeRecords.length, "End index out of bounds");
         StakeInfo[] memory stakeInfo = new StakeInfo[](end - start);
         for (uint256 i = start; i < end; i++) {

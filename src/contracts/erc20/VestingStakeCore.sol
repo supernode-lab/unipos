@@ -5,7 +5,6 @@ import {IStakeCore} from "./interfaces/IStakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title POS Stake Core Contract
@@ -13,7 +12,6 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  */
 contract VestingStakeCore is IStakeCore, ReentrancyGuard {
     using SafeERC20 for IERC20;
-    using Math for uint256;
 
     // Events
     event Stake(address indexed staker, uint256 amount, uint256 startTime, uint256 lockPeriod);
@@ -49,16 +47,16 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
     }
 
 
-    constructor(IERC20 _token, uint256 _lockPeriod, uint256 installmentCount) {
+    constructor(IERC20 _token, uint256 _lockPeriod, uint256 installmentCount, uint256 _minStakeAmount) {
         require(address(_token) != address(0), "Invalid Token address");
         token = _token;
         lockPeriod = _lockPeriod;
-        minStakeAmount = 100 * 1e18;
         installmentNum = installmentCount;
+        minStakeAmount = _minStakeAmount;
     }
 
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner, uint256 _amount) external {
+    function stake(address owner, uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
         token.safeTransferFrom(msg.sender, address(this), _amount);
@@ -87,7 +85,7 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
         return 0;
     }
 
-    function claimRewards(uint256 _index) external returns (uint256){
+    function claimRewards(uint256 _index) external nonReentrant returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
         require(_stake.owner == msg.sender, "Not owner");
         //require(_stake.owner == msg.sender || _stake.owner == beneficiary.owner, "Not owner or Beneficiary");
@@ -108,13 +106,13 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
         uint256 totalRewards = _stake.claimedRewards + _stake.lockedRewards;
         uint256 elapsedTime = block.timestamp - _stake.startTime;
         // calculate the number of unlocked rewards by installment
-        uint256 unlockedPhase = elapsedTime >= lockPeriod ? installmentNum : (elapsedTime * installmentNum) / lockPeriod;
+        if (elapsedTime >= lockPeriod) {
+            return totalRewards;
+        }
+
+        uint256 unlockedPhase = (elapsedTime * installmentNum) / lockPeriod;
         uint256 unlockedRewardsByInstallment = (totalRewards / installmentNum) * unlockedPhase;
         return unlockedRewardsByInstallment;
-    }
-
-    function getStakeInfo(uint256 _index) public view returns (StakeInfo memory) {
-        return stakeRecords[_index];
     }
 
     function getStakeInfoByAddress(address _staker) public view returns (StakeInfo[] memory) {
@@ -126,8 +124,12 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
         return stakeInfo;
     }
 
+    function stakeRecordsLength() public view returns (uint256){
+        return stakeRecords.length;
+    }
     // get stake infos by range [start, end)
     function getStakeInfoByPage(uint256 start, uint256 end) public view returns (StakeInfo[] memory) {
+        require(start < end, "invalid param");
         require(end <= stakeRecords.length, "End index out of bounds");
         StakeInfo[] memory stakeInfo = new StakeInfo[](end - start);
         for (uint256 i = start; i < end; i++) {
