@@ -43,7 +43,7 @@ contract StakeCoreMatcher is ReentrancyGuard {
         uint256 paidToken;
         uint256 usedUsdt;
         uint256 usedToken;
-        uint256 lastPaid;
+        uint256 firstPaid;
         StakeParam[] params;
         DealStatus status;
     }
@@ -136,37 +136,41 @@ contract StakeCoreMatcher is ReentrancyGuard {
         emit DealCreated(dealId, targetUsdt, targetToken);
     }
 
-    function payToken(uint256 dealId, uint256 amount, bool todo) external payable onlyProvider nonReentrant {
+    function payToken(uint256 dealId, uint256 amount, bool autoMatch) external payable onlyProvider nonReentrant {
         if (dealId >= deals.length) revert InvalidDealId();
         if (amount == 0) revert InvalidParam("amount");
         Deal storage deal = deals[dealId];
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         if (deal.paidToken + amount > deal.targetToken) revert TooMuchAmount();
         deal.paidToken += amount;
-        deal.lastPaid = block.timestamp;
+        deal.paidUsdt += amount;
         lockedToken += amount;
+        if (deal.firstPaid == 0) {
+            deal.firstPaid = block.timestamp;
+        }
         _receiveToken(amount);
         emit DealTokenPaid(dealId, amount);
 
-        if (todo && deal.paidUsdt != 0) {
+        if (autoMatch && deal.paidUsdt != 0) {
             _stake(dealId);
         }
     }
 
-    function payUsdt(uint256 dealId, uint256 amount, bool todo) external onlyStaker nonReentrant {
+    function payUsdt(uint256 dealId, uint256 amount, bool autoMatch) external onlyStaker nonReentrant {
         if (dealId >= deals.length) revert InvalidDealId();
         if (amount == 0) revert InvalidParam("amount");
         Deal storage deal = deals[dealId];
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         if (deal.paidUsdt + amount > deal.targetUsdt) revert TooMuchAmount();
-
         deal.paidUsdt += amount;
-        deal.lastPaid = block.timestamp;
         lockedUsdt += amount;
+        if (deal.firstPaid == 0) {
+            deal.firstPaid = block.timestamp;
+        }
         usdt.safeTransferFrom(msg.sender, address(this), amount);
         emit DealUsdtPaid(dealId, amount);
 
-        if (todo && deal.paidToken != 0) {
+        if (autoMatch && deal.paidToken != 0) {
             _stake(dealId);
         }
     }
@@ -185,7 +189,7 @@ contract StakeCoreMatcher is ReentrancyGuard {
     function abort(uint256 dealId) external onlyStakerOrProvider nonReentrant {
         if (dealId >= deals.length) revert InvalidDealId();
         Deal storage deal = deals[dealId];
-        if (block.timestamp < deal.lastPaid + lockPeriod) revert DealLocking();
+        if (block.timestamp < deal.firstPaid + lockPeriod) revert DealLocking();
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         uint256 availableUsdt = deal.paidUsdt - deal.usedUsdt;
         uint256 availableToken = deal.paidToken - deal.usedToken;
@@ -309,7 +313,7 @@ contract StakeCoreMatcher is ReentrancyGuard {
         if (isNative()) {
             if (msg.value != amount) revert IllegalValue();
         } else {
-            require(msg.value == 0, "unexpected msg.value");
+            if (msg.value == amount) revert IllegalValue();
             token.safeTransferFrom(msg.sender, address(this), amount);
         }
     }
