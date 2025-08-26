@@ -8,12 +8,11 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 interface IStakeCore is BaseError {
     error InsufficientBalance(uint256 balance, uint256 needed);
     error InsufficientDeposit(uint256 balance, uint256 needed);
-    error UnauthorizedCaller(address);
     error NoRewards();
     error NoPrincipal();
     error NoExcessTokens();
 
-    event Staked(address  staker, uint256 amount, uint256 startTime, uint256 lockPeriod, uint256 index);
+    event Staked(address  staker, uint256 principal, uint256 rewards, uint256 startTime, uint256 lockPeriod, uint256 index);
     event PrincipalWithdrawn(address  staker, uint256 amount, uint256 index);
     event RewardsWithdrawn(address  staker, uint256 amount, uint256 index);
     event BeneficiaryRewardsWithdrawn(address  beneficiary, uint256 amount);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {SignedCredential, VerifiableCredential} from "../Types/Structs/Credentials.sol";
+import {SignedCredential} from "../Types/Structs/Credentials.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {DataHasher} from "../libraries/DataHasher.sol";
@@ -81,10 +81,10 @@ abstract contract BaseCredential is AccessControl {
         SignedCredential calldata sc
     ) internal {
         checkValidatorSignatures(dataHash, sc.signature);
-        _checkSCParam(sc);
+        _checkScParam(sc);
     }
 
-    function _checkSCParam(SignedCredential calldata sc) internal {
+    function _checkScParam(SignedCredential calldata sc) internal {
         if (sc.vc.nonce <= user2nonce[msg.sender]) {
             revert NonceTooLow();
         }

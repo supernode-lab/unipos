@@ -9,18 +9,18 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 abstract contract UniversalToken is BaseError {
     using SafeERC20 for IERC20;
 
-    IERC20 internal immutable _token;
+    IERC20 internal immutable _TOKEN;
 
-    constructor(IERC20 token){
-        _token = token;
+    constructor(IERC20 __token){
+        _TOKEN = __token;
     }
 
     function token() public view virtual returns (IERC20){
-        return _token;
+        return _TOKEN;
     }
 
     function isNativeToken() public view returns (bool){
-        return (address(_token) == address(0));
+        return (address(_TOKEN) == address(0));
     }
 
     function _sendToken(address account, uint256 amount) internal {
@@ -28,7 +28,7 @@ abstract contract UniversalToken is BaseError {
             (bool success,) = payable(account).call{value: amount}("");
             require(success);
         } else {
-            _token.safeTransfer(account, amount);
+            _TOKEN.safeTransfer(account, amount);
         }
     }
 
@@ -37,7 +37,7 @@ abstract contract UniversalToken is BaseError {
             if (msg.value != amount) revert IllegalMsgValue();
         } else {
             if (msg.value != 0) revert IllegalMsgValue();
-            _token.safeTransferFrom(msg.sender, address(this), amount);
+            _TOKEN.safeTransferFrom(msg.sender, address(this), amount);
         }
     }
 
@@ -45,7 +45,7 @@ abstract contract UniversalToken is BaseError {
         if (isNativeToken()) {
             return address(this).balance;
         } else {
-            return _token.balanceOf(address(this));
+            return _TOKEN.balanceOf(address(this));
         }
     }
 }

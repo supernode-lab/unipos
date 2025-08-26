@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import {UniversalToken} from "../../base/UniversalToken.sol";
-import {BaseError} from "../interfaces/BaseError.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -56,8 +55,8 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
     event UsdtWithdrawn(uint256 amount);
     event DealSettled(uint256 dealId, uint256 usedToken, uint256 trimmedUsdt, DealStatus status);
 
-    IERC20 public immutable usdt;
-    uint256 public immutable lockPeriod;
+    IERC20 public immutable USDT;
+    uint256 public immutable LOCK_PERIOD;
 
     address public staker;
     address public provider;
@@ -67,8 +66,6 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
     Deal[] private deals;
 
     uint256 public withdrawableUsdt;
-
-
 
 
     modifier onlyStaker(){
@@ -94,11 +91,12 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
 
         staker = _staker;
         provider = _provider;
-        usdt = IERC20(_usdt);
-        lockPeriod = _lockPeriod;
+        USDT = IERC20(_usdt);
+        LOCK_PERIOD = _lockPeriod;
     }
 
     function newDeal(uint256 targetUsdt, StakeParam[] calldata stakeParams) external nonReentrant onlyStakerOrProvider {
+        if (targetUsdt == 0) revert InvalidParameter("targetUsdt");
         uint256 targetToken;
         for (uint256 i = 0; i < stakeParams.length; i++) {
             if (stakeParams[i].owner == address(0)) revert InvalidParameter("stakeParams.owner");
@@ -116,8 +114,6 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
             targetToken += (stakeAmount + apyAmount);
         }
 
-        require(targetToken > 0, "targetTokenAmount=0");
-        require(targetUsdt > 0, "targetUsdt=0");
 
         deals.push();
         uint256 dealId = deals.length - 1;
@@ -165,7 +161,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         if (deal.firstPaid == 0) {
             deal.firstPaid = block.timestamp;
         }
-        usdt.safeTransferFrom(msg.sender, address(this), amount);
+        USDT.safeTransferFrom(msg.sender, address(this), amount);
         emit DealUsdtPaid(dealId, amount);
 
         if (autoMatch && deal.paidToken != 0) {
@@ -180,21 +176,21 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
     function withdraw(uint256 amount) external onlyProvider nonReentrant {
         if (amount > withdrawableUsdt) revert InsufficientBalance(msg.sender, withdrawableUsdt, amount);
         withdrawableUsdt -= amount;
-        usdt.safeTransfer(msg.sender, amount);
+        USDT.safeTransfer(msg.sender, amount);
         emit UsdtWithdrawn(amount);
     }
 
     function abort(uint256 dealId) external onlyStakerOrProvider nonReentrant {
         if (dealId >= deals.length) revert InvalidDealId();
         Deal storage deal = deals[dealId];
-        if (block.timestamp < deal.firstPaid + lockPeriod) revert DealLocking();
+        if (block.timestamp < deal.firstPaid + LOCK_PERIOD) revert DealLocking();
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         uint256 availableUsdt = deal.paidUsdt - deal.usedUsdt;
         uint256 availableToken = deal.paidToken - deal.usedToken;
         deal.status = DealStatus.Abort;
         lockedUsdt -= availableUsdt;
         lockedToken -= availableToken;
-        usdt.safeTransfer(staker, availableUsdt);
+        USDT.safeTransfer(staker, availableUsdt);
         _sendToken(provider, availableToken);
         emit DealAborted(dealId, availableUsdt, availableToken);
     }
@@ -259,7 +255,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
 
             uint256 leftUsdt = availableUsdt - trimmedUsdt;
             if (leftUsdt > 0) {
-                usdt.safeTransfer(staker, leftUsdt);
+                USDT.safeTransfer(staker, leftUsdt);
                 deals[dealId].paidUsdt -= leftUsdt;
                 lockedUsdt -= leftUsdt;
             }
@@ -280,8 +276,8 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         if (isNativeToken()) {
             stakecore.stake{value: amount}(owner, amount);
         } else {
-            bool ok0 = _token.approve(spender, 0);
-            bool ok1 = _token.approve(spender, amount);
+            bool ok0 = _TOKEN.approve(spender, 0);
+            bool ok1 = _TOKEN.approve(spender, amount);
             require(ok0 && ok1, "approve fail");
             stakecore.stake(owner, amount);
         }
@@ -292,8 +288,8 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         if (isNativeToken()) {
             stakecore.depositSecurity{value: amount}(amount);
         } else {
-            bool ok0 = _token.approve(spender, 0);
-            bool ok1 = _token.approve(spender, amount);
+            bool ok0 = _TOKEN.approve(spender, 0);
+            bool ok1 = _TOKEN.approve(spender, amount);
             require(ok0 && ok1, "approve fail");
             stakecore.depositSecurity(amount);
         }

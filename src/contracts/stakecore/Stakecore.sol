@@ -2,7 +2,6 @@
 pragma solidity ^0.8.20;
 
 import {UniversalToken} from "../../base/UniversalToken.sol";
-import {BaseError} from "../interfaces/BaseError.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -19,15 +18,16 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
     uint256 public constant PRECISION = 1e18;
 
-    uint256 public immutable lockPeriod;
-    uint256 public immutable apy;
-    uint256 public immutable rewardInstallments;
-    uint256 public immutable principalInstallments;
-    uint256 public immutable minStakeAmount;
+    uint256 public immutable LOCK_PERIOD;
+    uint256 public immutable APY;
+    uint256 public immutable INSTALLMENT_NUM;
+    //uint256 public immutable principalInstallments;
+    uint256 private immutable MIN_STAKE_AMOUNT;
     // total user staked amount
     uint256 public totalCollateral;
     uint256 public unstakedCollateral;
 
+    uint256 public totalRewards;
     uint256 public totalWithdrawnRewards;
     // total security deposit amount
     uint256 public totalSecurityDeposit;
@@ -36,24 +36,22 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     IStakeCore.StakeInfo[] private stakeRecords;
     mapping(address => uint256[]) private userStakeIndexes; // 每个用户的质押记录
 
-    constructor(address admin, address[] memory providers, IERC20 _token, uint256 _lockPeriod, uint256 _apy, uint256 _rewardInstallments, uint256 _principalInstallments, uint256 _minStakeAmount)UniversalToken(_token) {
+    constructor(address admin, address[] memory providers, IERC20 _token, uint256 _lockPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount)UniversalToken(_token) {
         if (admin == address(0)) revert InvalidParameter("admin");
         if (providers.length == 0) revert InvalidParameter("providers");
-        if (_rewardInstallments == 0) revert InvalidParameter("rewardInstallments");
-        if (_principalInstallments == 0) revert InvalidParameter("principalInstallments");
+        if (_installmentNum == 0) revert InvalidParameter("installmentNum");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _setRoleAdmin(PROVIDER_ROLE, PROVIDER_ROLE);
         for (uint256 i = 0; i < providers.length; i++) {
             if (providers[i] == address(0)) revert InvalidParameter("providers");
-            _grantRole(PROVIDER_ROLE, providers[i]);
+            bool ok = _grantRole(PROVIDER_ROLE, providers[i]);
+            if (!ok) revert InvalidParameter("providers");
         }
-        _token = _token;
-        lockPeriod = _lockPeriod;
-        apy = (_apy * PRECISION) / 100;
-        minStakeAmount = _minStakeAmount;
-        rewardInstallments = _rewardInstallments;
-        principalInstallments = _principalInstallments;
+        LOCK_PERIOD = _lockPeriod;
+        APY = (_apy * PRECISION) / 100;
+        MIN_STAKE_AMOUNT = _minStakeAmount;
+        INSTALLMENT_NUM = _installmentNum;
     }
 
 
@@ -68,18 +66,19 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     }
 
     function depositSecurity(uint256 _amount) external payable onlyProvider nonReentrant {
-        if (apy == 0) revert Forbid();
+        if (APY == 0) revert Forbid();
         totalSecurityDeposit += _amount;
         _receiveToken(_amount);
         emit SecurityDeposited(_amount, totalSecurityDeposit);
     }
 
     function withdrawSecurity(uint256 _amount) external onlyProvider nonReentrant {
-        if (apy == 0) revert Forbid();
+        if (APY == 0) revert Forbid();
         uint256 tsd = totalSecurityDeposit;
-        uint256 requiredDeposit = getSecurityDepositByCollateral(totalCollateral);
-        uint256 remainingDeposit = tsd - requiredDeposit;
-        if (remainingDeposit < _amount) revert InsufficientBalance(remainingDeposit, _amount);
+        uint256 tr = totalRewards;
+        if (tsd < tr) revert InsufficientBalance(0, _amount);
+        uint256 available = tsd - tr;
+        if (available < _amount) revert InsufficientBalance(available, _amount);
         tsd -= _amount;
         totalSecurityDeposit = tsd;
         _sendToken(msg.sender, _amount);
@@ -89,26 +88,36 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     /// @notice stakers stake tokens, and can stake multiple times
     function stake(address owner, uint256 _amount) external payable nonReentrant {
         if (owner == address(0)) revert InvalidParameter("owner");
-        if (_amount == 0 || _amount < minStakeAmount) revert InvalidParameter("amount");
-        uint256 totalRewards = getSecurityDepositByCollateral(_amount);
-        uint256 requiredDeposit = getSecurityDepositByCollateral(totalCollateral + _amount);
-        if (requiredDeposit > totalSecurityDeposit) revert InsufficientDeposit(totalSecurityDeposit, requiredDeposit);
-        totalCollateral += _amount;
+        if (_amount == 0 || _amount < MIN_STAKE_AMOUNT) revert InvalidParameter("amount");
+        uint256 rewards;
+        uint256 principal;
+        if (APY == 0) {
+            principal = 0;
+            rewards = _amount;
+        } else {
+            principal = _amount;
+            rewards = getSecurityDepositByCollateral(_amount);
+            if (rewards + totalRewards > totalSecurityDeposit) revert InsufficientDeposit(totalSecurityDeposit - totalRewards, rewards);
+        }
+
+        totalCollateral += principal;
+        totalRewards += rewards;
         _receiveToken(_amount);
         stakeRecords.push(
             StakeInfo({
                 owner: owner,
                 startTime: block.timestamp,
-                lockPeriod: lockPeriod,
-                totalPrincipal: _amount,
+                lockPeriod: LOCK_PERIOD,
+                totalPrincipal: principal,
                 withdrawnPrincipal: 0,
-                totalRewards: totalRewards,
+                totalRewards: rewards,
                 withdrawnRewards: 0
             })
         );
 
-        userStakeIndexes[owner].push(stakeRecords.length - 1);
-        emit Staked(owner, _amount, block.timestamp, lockPeriod, stakeRecords.length - 1);
+        uint256 idx = stakeRecords.length - 1;
+        userStakeIndexes[owner].push(idx);
+        emit Staked(owner, principal, rewards, block.timestamp, LOCK_PERIOD, idx);
     }
 
     function withdrawPrincipal(uint256 _index) external nonReentrant returns (uint256){
@@ -140,8 +149,16 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     // collect the locked token for admin
     function collect() external onlyAdmin nonReentrant returns (uint256) {
         uint256 _balance = balance();
-        if (totalCollateral + totalSecurityDeposit >= _balance + unstakedCollateral + totalWithdrawnRewards) revert NoExcessTokens();
-        uint256 extraToken = _balance - (totalCollateral + totalSecurityDeposit - unstakedCollateral - totalWithdrawnRewards);
+        uint256 netObligation;
+        if (APY == 0) {
+            netObligation = totalRewards - totalWithdrawnRewards;
+        } else {
+            netObligation = totalCollateral + totalSecurityDeposit
+                - unstakedCollateral - totalWithdrawnRewards;
+        }
+
+        if (_balance <= netObligation) revert NoExcessTokens();
+        uint256 extraToken = _balance - netObligation;
         _sendToken(msg.sender, extraToken);
         emit ExcessCollected(extraToken);
         return extraToken;
@@ -150,58 +167,36 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     function getCollateralBySecurityDeposit(uint256 _amount) public view returns (uint256) {
         // (apy * lockPeriod / 360 days) = x days rewards rate
         // collateral * (x days rewards rate) = security deposit
-        if (apy == 0) {
+        if (APY == 0) {
             return type(uint256).max;
         }
-        return (_amount * PRECISION) / ((apy * lockPeriod) / 360 days);
+        return (_amount * PRECISION) / ((APY * LOCK_PERIOD) / 360 days);
     }
 
     function getSecurityDepositByCollateral(uint256 _amount) public view returns (uint256) {
-        return (_amount * ((apy * lockPeriod) / 360 days)) / PRECISION;
+        return (_amount * ((APY * LOCK_PERIOD) / 360 days)) / PRECISION;
     }
 
     function getUnlockedInstallmentRewards(uint256 _index) public view returns (uint256) {
         StakeInfo storage _stake = stakeRecords[_index];
         uint256 elapsedTime = block.timestamp - _stake.startTime;
-        if (elapsedTime >= lockPeriod) {
+        if (elapsedTime >= LOCK_PERIOD) {
             return _stake.totalRewards;
         }
 
-        uint256 unlockedPhase = (elapsedTime * rewardInstallments) / lockPeriod;
-        uint256 unlockedRewardsByInstallment = (_stake.totalRewards / rewardInstallments) * unlockedPhase;
+        uint256 unlockedPhase = (elapsedTime * INSTALLMENT_NUM) / LOCK_PERIOD;
+        uint256 unlockedRewardsByInstallment = (_stake.totalRewards / INSTALLMENT_NUM) * unlockedPhase;
         return unlockedRewardsByInstallment;
     }
 
     function getUnlockedInstallmentPrincipal(uint256 _index) public view returns (uint256) {
         StakeInfo storage _stake = stakeRecords[_index];
         uint256 elapsedTime = block.timestamp - _stake.startTime;
-        if (elapsedTime >= lockPeriod) {
+        if (elapsedTime >= LOCK_PERIOD) {
             return _stake.totalPrincipal;
         }
 
-        uint256 unlockedPhase = (elapsedTime * principalInstallments) / lockPeriod;
-        uint256 unlockedPrincipalByInstallment = (_stake.totalPrincipal / principalInstallments) * unlockedPhase;
-        return unlockedPrincipalByInstallment;
-    }
-
-    function getStakeInfoByAddress(address _staker) public view returns (StakeInfo[] memory) {
-        uint256[] memory indexes = userStakeIndexes[_staker];
-        StakeInfo[] memory stakeInfo = new StakeInfo[](indexes.length);
-        for (uint256 i = 0; i < indexes.length; i++) {
-            stakeInfo[i] = stakeRecords[indexes[i]];
-        }
-        return stakeInfo;
-    }
-
-    // get stake infos by range [start, end)
-    function getStakeInfoByPage(uint256 start, uint256 end) public view returns (StakeInfo[] memory) {
-        require(start < end, "invalid param");
-        require(end <= stakeRecords.length, "End index out of bounds");
-        StakeInfo[] memory stakeInfo = new StakeInfo[](end - start);
-        for (uint256 i = start; i < end; i++) {
-            stakeInfo[i - start] = stakeRecords[i];
-        }
-        return stakeInfo;
+        return 0;
     }
 
     function stakeRecordsLength() public view returns (uint256){
@@ -216,6 +211,11 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
         return userStakeIndexes[owner];
     }
 
+
+    function token() public view override(UniversalToken, IStakeCore) returns (IERC20){
+        return _TOKEN;
+    }
+
     function isAdmin(address addr) public view returns (bool){
         return hasRole(DEFAULT_ADMIN_ROLE, addr);
     }
@@ -224,7 +224,23 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
         return hasRole(PROVIDER_ROLE, addr);
     }
 
-    function token() public view override(UniversalToken,IStakeCore ) returns (IERC20){
-        return _token;
+
+    function grantRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
+        _grantRole(role, account);
     }
+
+    function revokeRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
+        if (account == msg.sender) revert InvalidParameter("account");
+        _revokeRole(role, account);
+    }
+
+    function renounceRole(bytes32, address) public pure override {
+        revert Forbid();
+    }
+
+
+    function minStakeAmount() external view returns (uint256){
+        return MIN_STAKE_AMOUNT;
+    }
+
 }
