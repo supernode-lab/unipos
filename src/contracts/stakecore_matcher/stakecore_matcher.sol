@@ -3,18 +3,20 @@ pragma solidity ^0.8.20;
 
 import {UniversalToken} from "../../base/UniversalToken.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
+contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     error InvalidDealId();
     error InsufficientToken();
     error InsufficientUsdt();
     error DealLocking();
-
+    error StakerAlreadyInited();
+    error ProviderAlreadyInited();
     error StakeAmountInsufficient(address, uint256);
     error IllegalStakecore();
     error IllegalDealStatus(DealStatus);
@@ -23,7 +25,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
 
     struct StakeParam {
         IStakeCore stakecore;
-        address owner;
+        address beneficiary;
         uint256 apyAmount;
         uint256 stakeAmount;
     }
@@ -48,12 +50,14 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
     }
 
 
+    event StakerInited(address);
+    event ProviderInited(address);
     event DealCreated(uint256 dealId, uint256 targetUsdt, uint256 targetToken);
     event DealUsdtPaid(uint256 dealId, uint256 amount);
     event DealTokenPaid(uint256 dealId, uint256 amount);
     event DealAborted(uint256 dealId, uint256 usdtAmount, uint256 tokenAmount);
     event UsdtWithdrawn(uint256 amount);
-    event DealSettled(uint256 dealId, uint256 usedToken, uint256 trimmedUsdt, DealStatus status);
+    event DealSettled(uint256 dealId, uint256 usedToken, uint256 usedUsdt, DealStatus status);
 
     IERC20 public immutable USDT;
     uint256 public immutable LOCK_PERIOD;
@@ -84,22 +88,32 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
     }
 
 
-    constructor(address _staker, address _provider, address _usdt, address token, uint256 _lockPeriod) UniversalToken(IERC20(token)){
-        if (_staker == address(0)) revert InvalidParameter("staker");
-        if (_provider == address(0)) revert InvalidParameter("provider");
+    constructor(address owner, address _usdt, address token, uint256 _lockPeriod) Ownable(owner) UniversalToken(IERC20(token)){
         if (_usdt == address(0)) revert InvalidParameter("usdt");
-
-        staker = _staker;
-        provider = _provider;
         USDT = IERC20(_usdt);
         LOCK_PERIOD = _lockPeriod;
     }
+
+    function initStaker(address _staker) external onlyOwner {
+        if (_staker == address(0)) revert InvalidParameter("staker");
+        if (staker != (address(0))) revert StakerAlreadyInited();
+        staker = _staker;
+        emit StakerInited(_staker);
+    }
+
+    function initProvider(address _provider) external onlyOwner {
+        if (_provider == address(0)) revert InvalidParameter("provider");
+        if (provider != (address(0))) revert ProviderAlreadyInited();
+        provider = _provider;
+        emit ProviderInited(_provider);
+    }
+
 
     function newDeal(uint256 targetUsdt, StakeParam[] calldata stakeParams) external nonReentrant onlyStakerOrProvider {
         if (targetUsdt == 0) revert InvalidParameter("targetUsdt");
         uint256 targetToken;
         for (uint256 i = 0; i < stakeParams.length; i++) {
-            if (stakeParams[i].owner == address(0)) revert InvalidParameter("stakeParams.owner");
+            if (stakeParams[i].beneficiary == address(0)) revert InvalidParameter("stakeParams.beneficiary");
             if (address(stakeParams[i].stakecore) == address(0)) revert InvalidParameter("stakeParams.stakecore");
             uint256 stakeAmount = stakeParams[i].stakeAmount;
             uint256 apyAmount = stakeParams[i].apyAmount;
@@ -137,7 +151,6 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         if (deal.paidToken + amount > deal.targetToken) revert TooMuchAmount();
         deal.paidToken += amount;
-        deal.paidUsdt += amount;
         lockedToken += amount;
         if (deal.firstPaid == 0) {
             deal.firstPaid = block.timestamp;
@@ -145,7 +158,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         _receiveToken(amount);
         emit DealTokenPaid(dealId, amount);
 
-        if (autoMatch && deal.paidUsdt != 0) {
+        if (autoMatch && deal.paidUsdt >deal.usedUsdt) {
             _stake(dealId);
         }
     }
@@ -164,7 +177,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         USDT.safeTransferFrom(msg.sender, address(this), amount);
         emit DealUsdtPaid(dealId, amount);
 
-        if (autoMatch && deal.paidToken != 0) {
+        if (autoMatch && deal.paidToken > deal.usedToken) {
             _stake(dealId);
         }
     }
@@ -207,15 +220,11 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
         if (availableToken == 0) revert InsufficientToken();
 
         uint256 trimmedToken;
-        uint256 trimmedUsdt;
-        if (deal.targetUsdt * availableToken >= deal.targetToken * availableUsdt) {
-            trimmedUsdt = availableUsdt;
-            trimmedToken = deal.targetToken * availableUsdt / deal.targetUsdt;
-        } else {
+        if (availableToken <= availableUsdt * deal.targetToken / deal.targetUsdt) {
             trimmedToken = availableToken;
-            trimmedUsdt = deal.targetUsdt * availableToken / deal.targetToken;
+        } else {
+            trimmedToken = availableUsdt * deal.targetToken / deal.targetUsdt;
         }
-
 
         uint256 paramsLen = deal.params.length;
         uint256 usedToken = 0;
@@ -223,7 +232,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
             uint256 apyAmount = deal.params[i].apyAmount;
             uint256 stakeAmount = deal.params[i].stakeAmount;
             IStakeCore stakecore = deal.params[i].stakecore;
-            address owner = deal.params[i].owner;
+            address owner = deal.params[i].beneficiary;
             uint256 amount = apyAmount + stakeAmount;
             uint256 paidAmount = trimmedToken * amount / deal.targetToken;
             uint256 paidStakeAmount = paidAmount * stakeAmount / amount;
@@ -238,36 +247,36 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
 
             usedToken += paidAmount;
         }
-
+        uint256 usedUsdt = usedToken * deal.targetUsdt / deal.targetToken;
 
         DealStatus status = DealStatus.Pending;
-        if (deal.targetUsdt == deal.paidUsdt && deal.targetToken == deal.paidToken) {
+        if (deal.targetUsdt <= deal.paidUsdt && deal.targetToken <= deal.paidToken) {
             status = DealStatus.Success;
             deals[dealId].status = DealStatus.Success;
 
-            uint256 leftToken = availableToken - usedToken;
-            if (leftToken > 0) {
-                _sendToken(provider, leftToken);
-                deals[dealId].paidToken -= leftToken;
-                lockedToken -= leftToken;
+            uint256 remainingToken = availableToken - usedToken;
+            uint256 remainingUsdt = availableUsdt - usedUsdt;
+
+            if (remainingToken > 0) {
+                _sendToken(provider, remainingToken);
+                deals[dealId].paidToken -= remainingToken;
+                lockedToken -= remainingToken;
             }
 
-
-            uint256 leftUsdt = availableUsdt - trimmedUsdt;
-            if (leftUsdt > 0) {
-                USDT.safeTransfer(staker, leftUsdt);
-                deals[dealId].paidUsdt -= leftUsdt;
-                lockedUsdt -= leftUsdt;
+            if (remainingUsdt > 0) {
+                USDT.safeTransfer(staker, remainingUsdt);
+                deals[dealId].paidUsdt -= remainingUsdt;
+                lockedUsdt -= remainingUsdt;
             }
         }
 
-        deals[dealId].usedUsdt += trimmedUsdt;
+        deals[dealId].usedUsdt += usedUsdt;
         deals[dealId].usedToken += usedToken;
-        lockedUsdt -= trimmedUsdt;
+        lockedUsdt -= usedUsdt;
         lockedToken -= usedToken;
-        withdrawableUsdt += trimmedUsdt;
+        withdrawableUsdt += usedUsdt;
 
-        emit DealSettled(dealId, usedToken, trimmedUsdt, status);
+        emit DealSettled(dealId, usedToken, usedUsdt, status);
     }
 
 
@@ -298,5 +307,8 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard {
 
     function dealsLength() external view returns (uint256) {return deals.length;}
 
-    function getDeal(uint256 id) external view returns (Deal memory) {return deals[id];}
+    function getDeal(uint256 dealId) external view returns (Deal memory) {
+        if (dealId >= deals.length) revert InvalidDealId();
+        return deals[dealId];
+    }
 }
