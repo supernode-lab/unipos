@@ -3,12 +3,12 @@ pragma solidity ^0.8.20;
 
 import {UniversalToken} from "../../base/UniversalToken.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
+contract StakeCoreMatcher is UniversalToken, AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     error InvalidDealId();
@@ -51,7 +51,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
 
 
     event StakerInited(address);
-    event ProviderInited(address);
+    event ProviderInited(address, address[]);
     event DealCreated(uint256 dealId, uint256 targetUsdt, uint256 targetToken);
     event DealUsdtPaid(uint256 dealId, uint256 amount);
     event DealTokenPaid(uint256 dealId, uint256 amount);
@@ -59,6 +59,13 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
     event UsdtWithdrawn(uint256 amount);
     event DealSettled(uint256 dealId, uint256 usedToken, uint256 usedUsdt, DealStatus status);
 
+    error ForbidRevokeMainProvider();
+    error OnlyStaker(address caller);
+    error OnlyProvider(address caller);
+    error OnlyStakerOrProvider(address caller);
+    error OnlyAdmin(address caller);
+
+    bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
     IERC20 public immutable USDT;
     uint256 public immutable LOCK_PERIOD;
 
@@ -73,39 +80,59 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
 
 
     modifier onlyStaker(){
-        require(msg.sender == staker, "Only staker");
+        if (msg.sender != staker) revert OnlyStaker(msg.sender);
         _;
     }
 
     modifier onlyProvider(){
-        require(msg.sender == provider, "Only provider");
+        if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
         _;
     }
 
     modifier onlyStakerOrProvider(){
-        require((msg.sender == staker || msg.sender == provider), "Only staker or provider");
+        if (msg .sender != staker &&
+            msg.sender != provider &&
+            !hasRole(PROVIDER_ROLE, msg.sender)
+        ) revert OnlyStakerOrProvider(msg.sender);
+        _;
+    }
+
+    modifier onlyAdmin() {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
         _;
     }
 
 
-    constructor(address owner, address _usdt, address token, uint256 _lockPeriod) Ownable(owner) UniversalToken(IERC20(token)){
+    constructor(address admin, address _usdt, address token, uint256 _lockPeriod)  UniversalToken(IERC20(token)){
+        if (admin == address(0)) revert InvalidParameter("admin");
         if (_usdt == address(0)) revert InvalidParameter("usdt");
+
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _setRoleAdmin(PROVIDER_ROLE, PROVIDER_ROLE);
         USDT = IERC20(_usdt);
         LOCK_PERIOD = _lockPeriod;
     }
 
-    function initStaker(address _staker) external onlyOwner {
+    function initStaker(address _staker) external onlyAdmin {
         if (_staker == address(0)) revert InvalidParameter("staker");
         if (staker != (address(0))) revert StakerAlreadyInited();
         staker = _staker;
         emit StakerInited(_staker);
     }
 
-    function initProvider(address _provider) external onlyOwner {
-        if (_provider == address(0)) revert InvalidParameter("provider");
+    function initProvider(address mainProvider, address[] memory providers) external onlyAdmin {
+        if (mainProvider == address(0)) revert InvalidParameter("mainProvider");
         if (provider != (address(0))) revert ProviderAlreadyInited();
-        provider = _provider;
-        emit ProviderInited(_provider);
+
+        for (uint256 i = 0; i < providers.length; i++) {
+            if (providers[i] == address(0)) revert InvalidParameter("providers");
+            _grantRole(PROVIDER_ROLE, providers[i]);
+        }
+
+        provider = mainProvider;
+        _grantRole(PROVIDER_ROLE, mainProvider);
+
+        emit ProviderInited(mainProvider, providers);
     }
 
 
@@ -158,7 +185,7 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
         _receiveToken(amount);
         emit DealTokenPaid(dealId, amount);
 
-        if (autoMatch && deal.paidUsdt >deal.usedUsdt) {
+        if (autoMatch && deal.paidUsdt > deal.usedUsdt) {
             _stake(dealId);
         }
     }
@@ -304,6 +331,16 @@ contract StakeCoreMatcher is UniversalToken, ReentrancyGuard, Ownable {
         }
     }
 
+    function revokeRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
+        if (role == PROVIDER_ROLE && account == provider) revert ForbidRevokeMainProvider();
+        _revokeRole(role, account);
+    }
+
+
+    function renounceRole(bytes32 role, address account) public override {
+        if (role == PROVIDER_ROLE && account == provider) revert ForbidRevokeMainProvider();
+        super.renounceRole(role, account);
+    }
 
     function dealsLength() external view returns (uint256) {return deals.length;}
 
