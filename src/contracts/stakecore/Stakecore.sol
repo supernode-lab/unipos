@@ -19,6 +19,7 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     uint256 public constant PRECISION = 1e18;
 
     uint256 public immutable LOCK_PERIOD;
+    uint256 public immutable CLIFF_PERIOD;
     uint256 public immutable APY;
     uint256 public immutable INSTALLMENT_NUM;
     //uint256 public immutable principalInstallments;
@@ -36,10 +37,11 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     IStakeCore.StakeInfo[] private stakeRecords;
     mapping(address => uint256[]) private userStakeIndexes; // 每个用户的质押记录
 
-    constructor(address admin, address[] memory providers, IERC20 _token, uint256 _lockPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount)UniversalToken(_token) {
+    constructor(address admin, address[] memory providers, IERC20 _token, uint256 lockPeriod, uint256 cliffPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount)UniversalToken(_token) {
         if (admin == address(0)) revert InvalidParameter("admin");
         if (providers.length == 0) revert InvalidParameter("providers");
         if (_installmentNum == 0) revert InvalidParameter("installmentNum");
+        if (cliffPeriod > lockPeriod) revert InvalidParameter("cliffPeriod");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _setRoleAdmin(PROVIDER_ROLE, PROVIDER_ROLE);
@@ -48,7 +50,8 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
             bool ok = _grantRole(PROVIDER_ROLE, providers[i]);
             if (!ok) revert InvalidParameter("providers");
         }
-        LOCK_PERIOD = _lockPeriod;
+        LOCK_PERIOD = lockPeriod;
+        CLIFF_PERIOD = cliffPeriod;
         APY = (_apy * PRECISION) / 100;
         MIN_STAKE_AMOUNT = _minStakeAmount;
         INSTALLMENT_NUM = _installmentNum;
@@ -135,14 +138,16 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
 
     function withdrawRewards(uint256 _index) external nonReentrant returns (uint256){
         StakeInfo storage _stake = stakeRecords[_index];
-        if (_stake.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
+        address owner = _stake.owner;
+        uint256 withdrawnRewards = _stake.withdrawnRewards;
+        if (owner != msg.sender) revert UnauthorizedCaller(msg.sender);
         uint256 totalUnlocked = getUnlockedInstallmentRewards(_index);
-        if (_stake.withdrawnRewards >= totalUnlocked) revert NoRewards();
-        uint256 toBeWithdrawn = totalUnlocked - _stake.withdrawnRewards;
+        if (withdrawnRewards >= totalUnlocked) revert NoRewards();
+        uint256 toBeWithdrawn = totalUnlocked - withdrawnRewards;
         _stake.withdrawnRewards += toBeWithdrawn;
         totalWithdrawnRewards += toBeWithdrawn;
-        _sendToken(_stake.owner, toBeWithdrawn);
-        emit RewardsWithdrawn(_stake.owner, toBeWithdrawn, _index);
+        _sendToken(owner, toBeWithdrawn);
+        emit RewardsWithdrawn(owner, toBeWithdrawn, _index);
         return toBeWithdrawn;
     }
 
@@ -180,11 +185,17 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     function getUnlockedInstallmentRewards(uint256 _index) public view returns (uint256) {
         StakeInfo storage _stake = stakeRecords[_index];
         uint256 elapsedTime = block.timestamp - _stake.startTime;
+        if (elapsedTime < CLIFF_PERIOD) {
+            return 0;
+        }
+
         if (elapsedTime >= LOCK_PERIOD) {
             return _stake.totalRewards;
         }
 
-        uint256 unlockedPhase = (elapsedTime * INSTALLMENT_NUM) / LOCK_PERIOD;
+        uint256 vestWindow = LOCK_PERIOD - CLIFF_PERIOD;
+        uint256 vestedTime = elapsedTime - CLIFF_PERIOD;
+        uint256 unlockedPhase = (vestedTime * INSTALLMENT_NUM) / vestWindow;
         uint256 unlockedRewardsByInstallment = (_stake.totalRewards / INSTALLMENT_NUM) * unlockedPhase;
         return unlockedRewardsByInstallment;
     }
