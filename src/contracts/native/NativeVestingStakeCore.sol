@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {INativeStakeCore} from "./interfaces/INativeStakeCore.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -46,9 +47,13 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
         return userStakeIndexes[owner];
     }
 
+    function depositSecurity(uint256) external payable{
+        revert("Forbid");
+    }
+
     /// @notice stakers stake tokens, and can stake multiple times
-    function stake(address owner) external payable nonReentrant {
-        uint256 _amount = msg.value;
+    function stake(address owner, uint256 _amount) external payable nonReentrant {
+        require(_amount==msg.value);
         require(_amount > 0, "Amount must be greater than 0");
         require(_amount >= minStakeAmount, "Amount must be greater than minimum stake amount");
         totalCollateral += _amount;
@@ -130,5 +135,9 @@ contract NativeVestingStakeCore is INativeStakeCore, ReentrancyGuard {
             stakeInfo[i - start] = stakeRecords[i];
         }
         return stakeInfo;
+    }
+
+    function token() public pure returns (IERC20){
+        return IERC20(address(0));
     }
 }
