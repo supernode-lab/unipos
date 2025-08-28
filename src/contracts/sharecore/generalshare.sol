@@ -12,28 +12,28 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @notice
  */
 contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable {
-    address  public  stakecore;
-    bytes4 immutable public CLAIM_REWARDS_SELECTOR;
-    bytes4 immutable public CLAIM_PRINCIPAL_SELECTOR;
-
-    ShareInfo[] public shareInfos;
-
-    ShareHolderKey[] public shareholders;
-    mapping(bytes32 => ShareholderInfo) public shareholdersInfo;
-
     // Events
     event ShareCreated(uint256 shareId, uint256 startT, uint256 endT, uint256 totalReward, uint256 totalPrincipal);
-    event RewardsAccrued(uint256 shareId, uint256 gatherT, uint256 recycledRewards);
+    event RewardsAccrued(uint256 shareId, uint256 recycledT, uint256 recycledRewards);
     event ShareholderAdded(address  shareholder, uint256 shareId, uint256 startTime, uint256 grantedReward, uint256 grantedPrincipal);
+    event FundsAllocated(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal);
     event StakeRewardsClaimed(uint256 shareId, uint256 amount);
-
     event StakePrincipalClaimed(uint256 shareId, uint256 amount);
     event RewardsClaimed(address  shareholder, uint256 shareId, uint256 amount);
     event PrincipalClaimed(address  shareholder, uint256 shareId, uint256 amount);
-
     event RewardsCollected(uint256 amount);
-    event Gathered(uint256 shareId, uint256 amount);
+    event Recycled(uint256 shareId, uint256 amount);
 
+    bytes4 immutable public CLAIM_REWARDS_SELECTOR;
+    bytes4 immutable public CLAIM_PRINCIPAL_SELECTOR;
+
+    address  public  stakecore;
+    ShareInfo[] public shareInfos;
+    ShareHolderKey[] public shareholders;
+    mapping(bytes32 => ShareholderInfo) public shareholdersInfo;
+    uint256 heldFunds;
+
+    receive() external payable {}
 
     constructor(address owner, address _stakecore, IERC20 token, bytes4 claimRewardsSelector, bytes4 claimPrincipalSelector) UniversalToken(token) Ownable(owner){
         stakecore = _stakecore;
@@ -79,33 +79,47 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
         emit ShareCreated(shareInfos.length - 1, startT, endT, totalReward, totalPrincipal);
     }
 
-    function accrueRewards(uint256 shareId, uint256 gatherT) external onlyOwner nonReentrant {
+    function allocateFunds(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal) external onlyOwner nonReentrant {
+        if (shareId >= shareInfos.length) revert InvalidShareId();
+        uint256 freeFunds = balance() - heldFunds;
+        if (allocatedReward + allocatedPrincipal > freeFunds) revert AmountExceedsBalance();
+        ShareInfo storage shareInfo = shareInfos[shareId];
+        if (allocatedReward + shareInfo.claimedReward > shareInfo.totalReward) revert InvalidParameter("allocatedReward");
+        if (allocatedPrincipal + shareInfo.claimedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("allocatedPrincipal");
+        shareInfo.claimedReward += allocatedReward;
+        shareInfo.claimedPrincipal += allocatedPrincipal;
+        heldFunds += (allocatedReward + allocatedPrincipal);
+        emit FundsAllocated(shareId, allocatedReward, allocatedPrincipal);
+    }
+
+    function accrueRewards(uint256 shareId, uint256 recycledT) external onlyOwner nonReentrant {
         if (shareId >= shareInfos.length) revert InvalidShareId();
         ShareInfo memory shareInfo = shareInfos[shareId];
-        if (gatherT <= shareInfo.recycledTime || gatherT > shareInfo.endTime || gatherT > block.timestamp) revert StartTimeOutOfRange(gatherT, shareInfo.recycledTime, shareInfo.endTime);
+        if (recycledT <= shareInfo.recycledTime || recycledT > shareInfo.endTime || recycledT > block.timestamp) revert  InvalidParameter("recycledT");
 
         uint256 ungrantedReward = shareInfo.totalReward - shareInfo.grantedReward - shareInfo.totalRecycledReward;
-        uint256 recycledReward = ungrantedReward * (gatherT - shareInfo.recycledTime) / (shareInfo.endTime - shareInfo.recycledTime);
+        uint256 recycledReward = ungrantedReward * (recycledT - shareInfo.recycledTime) / (shareInfo.endTime - shareInfo.recycledTime);
 
         ShareInfo storage shareInfoStorage = shareInfos[shareId];
         shareInfoStorage.totalRecycledReward += recycledReward;
-        shareInfoStorage.recycledTime = gatherT;
-        emit RewardsAccrued(shareId, gatherT, recycledReward);
+        shareInfoStorage.recycledTime = recycledT;
+        emit RewardsAccrued(shareId, recycledT, recycledReward);
     }
 
-    function gather(uint256 shareId, uint256 amount) external onlyOwner nonReentrant {
+    function recycle(uint256 shareId, uint256 amount) external onlyOwner nonReentrant {
         if (shareId >= shareInfos.length) revert InvalidShareId();
         ShareInfo memory shareInfo = shareInfos[shareId];
 
         uint256 available = shareInfo.totalRecycledReward - shareInfo.withdrawnRecycledReward;
-        if (amount > available) revert AmountExceedsWithdrawable(amount, available);
+        if (amount > available) revert AmountExceedsWithdrawable();
 
         uint256 withdrawableReward = shareInfo.claimedReward - shareInfo.withdrawnReward;
-        if (amount > withdrawableReward) revert AmountExceedsBalance(amount, withdrawableReward);
+        if (amount > withdrawableReward) revert AmountExceedsBalance();
         shareInfos[shareId].withdrawnReward += amount;
         shareInfos[shareId].withdrawnRecycledReward += amount;
+        heldFunds -= amount;
         _sendToken(msg.sender, amount);
-        emit Gathered(shareId, amount);
+        emit Recycled(shareId, amount);
     }
 
     function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
@@ -122,14 +136,14 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
         if (shareId >= shareInfos.length) revert InvalidShareId();
         ShareInfo memory shareInfo = shareInfos[shareId];
 
-        if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InsufficientUnallocatedPrincipal();
-        if (_startTime < shareInfo.recycledTime || _startTime >= shareInfo.endTime) revert StartTimeOutOfRange(_startTime, shareInfo.recycledTime, shareInfo.endTime);
+        if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("grantedPrincipal");
+        if (_startTime < shareInfo.recycledTime || _startTime >= shareInfo.endTime) revert InvalidParameter("startTime");
 
         uint256 unrecycledReward = _calUnrecycledReward(shareInfo, _grantedReward, _startTime);
         uint256 needtoRecycleReward = _calNeedToRecycleReward(shareInfo, _grantedReward, _startTime);
 
 
-        if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward + unrecycledReward > shareInfo.totalReward) revert InsufficientUnallocatedRewards();
+        if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward + unrecycledReward > shareInfo.totalReward) revert InvalidParameter("grantedReward");
         if (shareholdersInfo[_getShareHolderKeyHash(_owner, shareId)].owner != address(0)) revert HolderAlreadyExists();
         shareholders.push(ShareHolderKey({
             owner: _owner,
@@ -139,7 +153,7 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
         shareholdersInfo[_getShareHolderKeyHash(_owner, shareId)] = ShareholderInfo({
             owner: _owner,
             shareId: shareId,
-            _recycledReward: needtoRecycleReward,
+            preRecycledReward: needtoRecycleReward,
             grantedReward: _grantedReward,
             withdrawnReward: 0,
             grantedPrincipal: _grantedPrincipal,
@@ -154,54 +168,84 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
 
     function claimStakeRewards(uint256 shareId) external nonReentrant {
         if (shareId >= shareInfos.length) revert InvalidShareId();
+        ShareInfo storage shareInfo = shareInfos[shareId];
+
         uint256 _before = balance();
-        _claimStakeRewards(shareInfos[shareId].claimRewardArgs);
+        _claimStakeRewards(shareInfo.claimRewardArgs);
         uint256 _after = balance();
+
         uint256 amount = _after - _before;
-        shareInfos[shareId].claimedReward += amount;
+        uint256 maxAmount = shareInfo.totalReward - shareInfo.claimedReward;
+        if (amount > maxAmount) {
+            amount = maxAmount;
+        }
+
+        shareInfo.claimedReward += amount;
+        heldFunds += amount;
         emit StakeRewardsClaimed(shareId, amount);
     }
 
     function claimStakePrincipal(uint256 shareId) external nonReentrant {
         if (shareId >= shareInfos.length) revert InvalidShareId();
+        ShareInfo storage shareInfo = shareInfos[shareId];
+
         uint256 _before = balance();
-        _claimStakePrincipal(shareInfos[shareId].claimPrincipalArgs);
+        _claimStakePrincipal(shareInfo.claimPrincipalArgs);
         uint256 _after = balance();
+
         uint256 amount = _after - _before;
+        uint256 maxAmount = shareInfo.totalPrincipal - shareInfo.claimedPrincipal;
+        if (amount > maxAmount) {
+            amount = maxAmount;
+        }
+
         shareInfos[shareId].claimedPrincipal += amount;
+        heldFunds += amount;
         emit StakePrincipalClaimed(shareId, amount);
     }
 
-    function claimRewards(uint256 shareId) external nonReentrant {
+    function withdrawRewards(uint256 shareId) external nonReentrant {
         if (shareId >= shareInfos.length) revert InvalidShareId();
         ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, shareId)];
         if (info.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
+        uint256 totalUnlockedReward = calculateShareholderRewards(info, shareId);
+        if (totalUnlockedReward <= info.withdrawnReward) revert AmountExceedsWithdrawable();
+        uint256 withdrawableReward = totalUnlockedReward - info.withdrawnReward;
+
         ShareInfo storage shareInfo = shareInfos[info.shareId];
-        uint256 claimableTotalReward = calculateShareholderRewards(info, shareId);
-        if (claimableTotalReward <= info.withdrawnReward) revert NoRewards();
-        uint256 claimableReward = claimableTotalReward - info.withdrawnReward;
-        uint256 withdrawableReward = shareInfo.claimedReward - shareInfo.withdrawnReward;
-        if (withdrawableReward == 0) revert InsufficientRewards();
-        if (withdrawableReward < claimableReward) {
-            claimableReward = withdrawableReward;
+        uint256 balanceReward = shareInfo.claimedReward - shareInfo.withdrawnReward;
+        if (balanceReward == 0) revert AmountExceedsBalance();
+        if (balanceReward < withdrawableReward) {
+            withdrawableReward = balanceReward;
         }
 
-        info.withdrawnReward += claimableReward;
-        shareInfo.withdrawnReward += claimableReward;
-        _sendToken(msg.sender, claimableReward);
-        emit RewardsClaimed(msg.sender, shareId, claimableReward);
+        info.withdrawnReward += withdrawableReward;
+        shareInfo.withdrawnReward += withdrawableReward;
+        heldFunds -= withdrawableReward;
+        _sendToken(msg.sender, withdrawableReward);
+        emit RewardsClaimed(msg.sender, shareId, withdrawableReward);
     }
 
-    function claimPrincipal(uint256 shareId) external nonReentrant {
+    function withdrawPrincipal(uint256 shareId) external nonReentrant {
         if (shareId >= shareInfos.length) revert InvalidShareId();
         ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, shareId)];
         if (info.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
-        uint256 claimableTotalPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareId);
-        if (claimableTotalPrincipal <= info.withdrawnPrincipal) revert NoPrincipal();
-        uint256 claimablePrincipal = claimableTotalPrincipal - info.withdrawnPrincipal;
-        info.withdrawnPrincipal = claimableTotalPrincipal;
-        _sendToken(msg.sender, claimablePrincipal);
-        emit PrincipalClaimed(msg.sender, shareId, claimablePrincipal);
+        uint256 totalUnlockedPrincipal = calculateShareholderPrincipal(info.grantedPrincipal, info.shareId);
+        if (totalUnlockedPrincipal <= info.withdrawnPrincipal) revert AmountExceedsWithdrawable();
+        uint256 withdrawablePrincipal = totalUnlockedPrincipal - info.withdrawnPrincipal;
+
+        ShareInfo storage shareInfo = shareInfos[info.shareId];
+        uint256 balancePrincipal = shareInfo.claimedPrincipal - shareInfo.withdrawnPrincipal;
+        if (balancePrincipal == 0) revert AmountExceedsBalance();
+        if (balancePrincipal < withdrawablePrincipal) {
+            withdrawablePrincipal = balancePrincipal;
+        }
+
+        info.withdrawnPrincipal += withdrawablePrincipal;
+        shareInfo.withdrawnPrincipal += withdrawablePrincipal;
+        heldFunds -= withdrawablePrincipal;
+        _sendToken(msg.sender, withdrawablePrincipal);
+        emit PrincipalClaimed(msg.sender, shareId, withdrawablePrincipal);
     }
 
     function calculateShareholderRewards(ShareholderInfo memory holderinfo, uint256 shareId) internal view returns (uint256){
@@ -209,8 +253,8 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
             return 0;
         }
 
-        uint256 gross = ((holderinfo.grantedReward + holderinfo._recycledReward) * shareInfos[shareId].claimedReward) / shareInfos[shareId].totalReward;
-        return gross > holderinfo._recycledReward ? gross - holderinfo._recycledReward : 0;
+        uint256 gross = ((holderinfo.grantedReward + holderinfo.preRecycledReward) * shareInfos[shareId].claimedReward) / shareInfos[shareId].totalReward;
+        return gross > holderinfo.preRecycledReward ? gross - holderinfo.preRecycledReward : 0;
     }
 
 
@@ -225,16 +269,12 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
     function collect() external onlyOwner nonReentrant returns (uint256) {
         //  withdraw extra token from this contract
         uint256 bal = balance();
-        uint256 lockedReward;
-        uint256 shareIdsLength = shareInfos.length;
-        for (uint256 i = 0; i < shareIdsLength; i++) {
-            lockedReward += (shareInfos[i].claimedReward + shareInfos[i].claimedPrincipal - shareInfos[i].withdrawnReward - shareInfos[i].withdrawnPrincipal);
-        }
-
+        uint256 lockedReward = heldFunds;
         require(bal >= lockedReward, "Not enough token");
-        _sendToken(msg.sender, bal - lockedReward);
-        emit RewardsCollected(bal - lockedReward);
-        return bal - lockedReward;
+        uint256 extraToken = bal - lockedReward;
+        _sendToken(msg.sender, extraToken);
+        emit RewardsCollected(extraToken);
+        return extraToken;
     }
 
     function getShareholderInfo(address _shareholder, uint256 shareId) public view returns (ShareholderInfo memory) {
@@ -274,7 +314,6 @@ contract GeneralShare is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable
     function _calNeedToRecycleReward(ShareInfo memory shareInfo, uint256 grantedReward, uint256 startT) private pure returns (uint256){
         return grantedReward * (startT - shareInfo.startTime) / (shareInfo.endTime - startT);
     }
-
 
     function _getShareHolderKeyHash(address owner, uint256 shareId) internal pure returns (bytes32) {
         return keccak256(abi.encode(owner, shareId));

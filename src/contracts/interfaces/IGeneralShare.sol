@@ -4,22 +4,16 @@ pragma solidity ^0.8.20;
 import {BaseError} from "./BaseError.sol";
 
 interface IGeneralShare is BaseError {
-    error InsufficientUnallocatedPrincipal();
-    error InsufficientUnallocatedRewards();
-    error HolderAlreadyExists();
-    error NoRewards();
-    error NoPrincipal();
     error InvalidShareId();
+    error HolderAlreadyExists();
     error StakeCoreAlreadySet();
-    error StartTimeOutOfRange(uint256 startTime, uint256 shareStart, uint256 shareEnd);
-    error AmountExceedsWithdrawable(uint256 amount, uint256 withdrawable);
-    error AmountExceedsBalance(uint256 amount, uint256 balance);
-    error InsufficientRewards();
+    error AmountExceedsWithdrawable();
+    error AmountExceedsBalance();
 
     struct ShareholderInfo {
         address owner;
         uint256 shareId;
-        uint256 _recycledReward;
+        uint256 preRecycledReward;
         uint256 grantedReward;
         uint256 withdrawnReward;
         uint256 grantedPrincipal;
