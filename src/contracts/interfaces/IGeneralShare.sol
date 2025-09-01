@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import {BaseError} from "./BaseError.sol";
 
 interface IGeneralShare is BaseError {
-    error InvalidShareId();
+    error InvalidShareId(uint256 shareId);
     error HolderAlreadyExists();
     error StakeCoreAlreadySet();
     error AmountExceedsWithdrawable();
@@ -26,6 +26,7 @@ interface IGeneralShare is BaseError {
     }
 
     struct ShareInfo {
+        bool  isSet;
         bytes claimRewardArgs;
         bytes claimPrincipalArgs;
 
