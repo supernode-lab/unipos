@@ -11,26 +11,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @notice
  */
 abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable {
-    // Events
-    event RewardsAccrued(uint256 shareId, uint256 recycledT, uint256 recycledRewards);
-    event ShareholderAdded(address  shareholder, uint256 shareId, uint256 startTime, uint256 grantedReward, uint256 grantedPrincipal);
-    event FundsAllocated(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal);
-    event RewardsClaimed(address  shareholder, uint256 shareId, uint256 amount);
-    event PrincipalClaimed(address  shareholder, uint256 shareId, uint256 amount);
-    event ExcessCollected(uint256 amount);
-
-    event StakeRewardsClaimed(uint256 shareId, uint256 amount);
-    event StakePrincipalClaimed(uint256 shareId, uint256 amount);
-
     address  public  stakecore;
-
     uint256[] public shareIds;
     mapping(uint256 shareId => ShareInfo) public shareInfos;
     ShareHolderKey[] public shareholders;
     mapping(bytes32 => ShareholderInfo) public shareholdersInfo;
-    uint256 heldFunds;
-
-    receive() external payable {}
+    uint256 public heldFunds;
 
     function initStakeCore(address) external virtual;
 
@@ -71,7 +57,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         _addShareholder(_owner, shareId, shareInfos[shareId].startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function addShareholder2(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
+    function addShareholderWithStartTime(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
         _addShareholder(_owner, shareId, _startTime, _grantedReward, _grantedPrincipal);
     }
 

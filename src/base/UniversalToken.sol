@@ -15,6 +15,8 @@ abstract contract UniversalToken is BaseError {
         _TOKEN = __token;
     }
 
+    receive() external payable {}
+
     function token() public view virtual returns (IERC20){
         return _TOKEN;
     }
@@ -37,7 +39,10 @@ abstract contract UniversalToken is BaseError {
             if (msg.value != amount) revert IllegalMsgValue();
         } else {
             if (msg.value != 0) revert IllegalMsgValue();
+            uint256 beforeBal = _TOKEN.balanceOf(address(this));
             _TOKEN.safeTransferFrom(msg.sender, address(this), amount);
+            uint256 afterBal = _TOKEN.balanceOf(address(this));
+            require(afterBal - beforeBal == amount);
         }
     }
 

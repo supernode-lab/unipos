@@ -31,7 +31,7 @@ contract ShareCore is BaseShareCore {
         stakecore = _stakecore;
     }
 
-    function syncStakecore() external nonReentrant {
+    function registerNewShares() external nonReentrant {
         uint256[] memory _shareIds = IStakeCore(stakecore).getUserStakeIndexes(address(this));
         uint256 curShareIdsLen = shareIds.length;
         if (_shareIds.length == curShareIdsLen) {
