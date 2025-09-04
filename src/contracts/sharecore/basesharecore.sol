@@ -13,9 +13,9 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable {
     address  public  stakecore;
     uint256[] public shareIds;
-    mapping(uint256 shareId => ShareInfo) public shareInfos;
+    mapping(uint256 shareId => ShareInfo) internal shareInfos;
     ShareHolderKey[] public shareholders;
-    mapping(bytes32 => ShareholderInfo) public shareholdersInfo;
+    mapping(bytes32 => ShareholderInfo) internal shareholdersInfos;
     uint256 public heldFunds;
 
     function initStakeCore(address) external virtual;
@@ -65,23 +65,23 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         ShareInfo storage shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
-        uint256 recycledTime=shareInfo.recycledTime;
-        uint256 endTime=shareInfo.endTime;
+        uint256 recycledTime = shareInfo.recycledTime;
+        uint256 endTime = shareInfo.endTime;
 
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("grantedPrincipal");
         if (_startTime < recycledTime || _startTime >= endTime) revert InvalidParameter("startTime");
 
-        uint256 unrecycledReward = _calUnrecycledReward(_startTime,recycledTime,endTime, _grantedReward );
-        uint256 needtoRecycleReward = _calNeedToRecycleReward(_startTime,shareInfo.startTime,endTime, _grantedReward );
+        uint256 unrecycledReward = _calUnrecycledReward(_startTime, recycledTime, endTime, _grantedReward);
+        uint256 needtoRecycleReward = _calNeedToRecycleReward(_startTime, shareInfo.startTime, endTime, _grantedReward);
         if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward + unrecycledReward > shareInfo.totalReward) revert InvalidParameter("grantedReward");
-        bytes32 key=_getShareHolderKeyHash(_owner, shareId);
-        if (shareholdersInfo[key].owner != address(0)) revert HolderAlreadyExists();
+        bytes32 key = _getShareHolderKeyHash(_owner, shareId);
+        if (shareholdersInfos[key].owner != address(0)) revert HolderAlreadyExists();
         shareholders.push(ShareHolderKey({
             owner: _owner,
             shareId: shareId
         }));
 
-        shareholdersInfo[key] = ShareholderInfo({
+        shareholdersInfos[key] = ShareholderInfo({
             owner: _owner,
             shareId: shareId,
             preRecycledReward: needtoRecycleReward,
@@ -102,7 +102,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         ShareInfo storage shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
-        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, shareId)];
+        ShareholderInfo storage info = shareholdersInfos[_getShareHolderKeyHash(msg.sender, shareId)];
         if (info.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
         uint256 totalUnlockedReward = _calculateShareholderRewards(info, shareId);
         if (totalUnlockedReward <= info.withdrawnReward) revert AmountExceedsWithdrawable();
@@ -124,7 +124,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
     function withdrawPrincipal(uint256 shareId) external nonReentrant {
         ShareInfo storage shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
-        ShareholderInfo storage info = shareholdersInfo[_getShareHolderKeyHash(msg.sender, shareId)];
+        ShareholderInfo storage info = shareholdersInfos[_getShareHolderKeyHash(msg.sender, shareId)];
         if (info.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
         uint256 totalUnlockedPrincipal = _calculateShareholderPrincipal(info.grantedPrincipal, info.shareId);
         if (totalUnlockedPrincipal <= info.withdrawnPrincipal) revert AmountExceedsWithdrawable();
@@ -155,7 +155,11 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
     }
 
     function getShareholderInfo(address _shareholder, uint256 shareId) public view returns (ShareholderInfo memory) {
-        return shareholdersInfo[_getShareHolderKeyHash(_shareholder, shareId)];
+        return shareholdersInfos[_getShareHolderKeyHash(_shareholder, shareId)];
+    }
+
+    function GetShareInfo(uint256 shareId) public view returns (ShareInfo memory){
+        return shareInfos[shareId];
     }
 
     function _calculateShareholderRewards(ShareholderInfo storage holderinfo, uint256 shareId) internal view returns (uint256){
