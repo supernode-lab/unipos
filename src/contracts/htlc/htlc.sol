@@ -43,8 +43,8 @@ contract HTLC is BaseError, ReentrancyGuard {
         uint64  timelock,
         bytes32 hashlock
     );
-    event Claimed(bytes32 indexed swapId, bytes32 preimage);
-    event Refunded(bytes32 indexed swapId);
+    event Claimed(bytes32 swapId, bytes32 preimage);
+    event Refunded(bytes32 swapId);
 
 
 // swapId => Swap

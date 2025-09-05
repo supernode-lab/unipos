@@ -38,8 +38,8 @@ contract StakeCoreMatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGu
         uint64  timelock,
         bytes32 hashlock
     );
-    event Claimed(bytes32 indexed swapId, bytes32 preimage);
-    event Refunded(bytes32 indexed swapId);
+    event Claimed(bytes32 swapId, bytes32 preimage);
+    event Refunded(bytes32 swapId);
     event StakerInited(address);
     event ProviderInited(address, address[]);
     event DealCreated(uint256 dealId, uint256 targetToken);
