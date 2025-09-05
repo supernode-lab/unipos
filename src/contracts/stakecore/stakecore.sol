@@ -222,7 +222,6 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
         return userStakeIndexes[owner];
     }
 
-
     function token() public view override(UniversalToken, IStakeCore) returns (IERC20){
         return _TOKEN;
     }
@@ -234,7 +233,6 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     function isProvider(address addr) public view returns (bool){
         return hasRole(PROVIDER_ROLE, addr);
     }
-
 
     function grantRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
         _grantRole(role, account);
@@ -248,7 +246,6 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     function renounceRole(bytes32, address) public pure override {
         revert Forbid();
     }
-
 
     function minStakeAmount() external view returns (uint256){
         return MIN_STAKE_AMOUNT;

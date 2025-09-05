@@ -71,6 +71,18 @@ contract GeneralShare is BaseShareCore {
         emit ShareCreated(shareId, startT, endT, totalReward, totalPrincipal);
     }
 
+    function allocateFunds(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal) external onlyOwner nonReentrant {
+        ShareInfo storage shareInfo = shareInfos[shareId];
+        if (!shareInfo.isSet) revert InvalidShareId(shareId);
+        uint256 freeFunds = balance() - heldFunds;
+        if (allocatedReward + allocatedPrincipal > freeFunds) revert AmountExceedsBalance();
+        if (allocatedReward + shareInfo.claimedReward > shareInfo.totalReward) revert InvalidParameter("allocatedReward");
+        if (allocatedPrincipal + shareInfo.claimedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("allocatedPrincipal");
+        shareInfo.claimedReward += allocatedReward;
+        shareInfo.claimedPrincipal += allocatedPrincipal;
+        heldFunds += (allocatedReward + allocatedPrincipal);
+        emit FundsAllocated(shareId, allocatedReward, allocatedPrincipal);
+    }
 
     function claimStakeRewards(uint256 shareId) external override nonReentrant {
         ShareInfo storage shareInfo = shareInfos[shareId];

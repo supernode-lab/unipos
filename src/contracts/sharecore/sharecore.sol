@@ -14,6 +14,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract ShareCore is BaseShareCore {
     // Events
     event Registered(uint256[] shareIds);
+    event StakeRewardsClaimedBatch(uint256[] shareIds, uint256[] amounts);
 
     constructor(address owner, address _stakecore, IERC20 token) UniversalToken(token) Ownable(owner){
         if (address(_stakecore) != address(0)) {
@@ -83,6 +84,41 @@ contract ShareCore is BaseShareCore {
         emit StakeRewardsClaimed(shareId, amount);
     }
 
+    function claimStakeRewardsBatch(uint256 startI, uint256 len) external nonReentrant {
+        uint256 lenMax = shareIds.length;
+        if (startI >= lenMax) return;
+
+        if (len == 0||startI + len > lenMax) {
+            len = lenMax - startI;
+        }
+
+        uint256 endI =  startI+len;
+        uint256[] memory _shareIds = new uint256[](len);
+        uint256[] memory amounts = new uint256[](len);
+
+        uint256 j;
+        uint256 sum;
+        for (uint256 i = startI; i < endI;) {
+            uint256 shareId = shareIds[i];
+            _shareIds[j] = shareId;
+            try IStakeCore(stakecore).withdrawRewards(shareId)returns (uint256 amount){
+                shareInfos[shareId].claimedReward += amount;
+                sum += amount;
+                amounts[j] = amount;
+            }catch{
+
+            }
+
+            unchecked { ++i; ++j; }
+        }
+
+        if (sum > 0) {
+            heldFunds += sum;
+        }
+
+        emit StakeRewardsClaimedBatch(_shareIds, amounts);
+    }
+
     function claimStakePrincipal(uint256 shareId) external override nonReentrant {
         if (!shareInfos[shareId].isSet) revert InvalidShareId(shareId);
         uint256 amount = IStakeCore(stakecore).withdrawPrincipal(shareId);
@@ -90,4 +126,6 @@ contract ShareCore is BaseShareCore {
         heldFunds += amount;
         emit StakePrincipalClaimed(shareId, amount);
     }
+
+
 }

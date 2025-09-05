@@ -24,19 +24,6 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
 
     function claimStakePrincipal(uint256 shareId) external virtual;
 
-    function allocateFunds(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal) external onlyOwner nonReentrant {
-        ShareInfo storage shareInfo = shareInfos[shareId];
-        if (!shareInfo.isSet) revert InvalidShareId(shareId);
-        uint256 freeFunds = balance() - heldFunds;
-        if (allocatedReward + allocatedPrincipal > freeFunds) revert AmountExceedsBalance();
-        if (allocatedReward + shareInfo.claimedReward > shareInfo.totalReward) revert InvalidParameter("allocatedReward");
-        if (allocatedPrincipal + shareInfo.claimedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("allocatedPrincipal");
-        shareInfo.claimedReward += allocatedReward;
-        shareInfo.claimedPrincipal += allocatedPrincipal;
-        heldFunds += (allocatedReward + allocatedPrincipal);
-        emit FundsAllocated(shareId, allocatedReward, allocatedPrincipal);
-    }
-
     function accrueRewards(uint256 shareId, uint256 recycledT) external onlyOwner nonReentrant {
         ShareInfo memory shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
@@ -52,12 +39,12 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit RewardsAccrued(shareId, recycledT, recycledReward);
     }
 
-    function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
+    function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyOwner nonReentrant {
         if (!shareInfos[shareId].isSet) revert InvalidShareId(shareId);
         _addShareholder(_owner, shareId, shareInfos[shareId].startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function addShareholderWithStartTime(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external onlyOwner nonReentrant {
+    function addShareholderWithStartTime(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyOwner nonReentrant {
         _addShareholder(_owner, shareId, _startTime, _grantedReward, _grantedPrincipal);
     }
 
@@ -154,8 +141,16 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         return extraToken;
     }
 
+    function shareholdersLength() public view returns (uint256){
+        return shareholders.length;
+    }
+
     function getShareholderInfo(address _shareholder, uint256 shareId) public view returns (ShareholderInfo memory) {
         return shareholdersInfos[_getShareHolderKeyHash(_shareholder, shareId)];
+    }
+
+    function shareIdsLength() public view returns (uint256){
+        return shareIds.length;
     }
 
     function getShareInfo(uint256 shareId) public view returns (ShareInfo memory){
