@@ -5,14 +5,7 @@ import {IGeneralShare} from "../../src/contracts/interfaces/IGeneralShare.sol";
 import {IStakeCore} from "../../src/contracts/interfaces/IStakeCore.sol";
 import {GeneralShare} from "../../src/contracts/sharecore/generalshare.sol";
 import {StakeCore} from "../../src/contracts/stakecore/stakecore.sol";
-import {BaseTest} from "../base/base.sol";
 import {StakeCoreTest} from "../stakecore/stakecoreTest.sol";
-import {CommonBase} from "forge-std/Base.sol";
-import {StdAssertions} from "forge-std/StdAssertions.sol";
-import {StdChains} from "forge-std/StdChains.sol";
-import {StdCheats, StdCheatsSafe} from "forge-std/StdCheats.sol";
-import {StdUtils} from "forge-std/StdUtils.sol";
-import {console} from "forge-std/console.sol";
 
 
 contract GeneralShareTest is StakeCoreTest {
@@ -62,12 +55,12 @@ contract GeneralShareTest is StakeCoreTest {
 
         vm.warp(block.timestamp + lockPeriod / 2);
         generalshare.claimStakeRewards(shareId);
-        IGeneralShare.ShareInfo memory shareInfo = generalshare.GetShareInfo(shareId);
+        IGeneralShare.ShareInfo memory shareInfo = generalshare.getShareInfo(shareId);
         assertEq(shareInfo.totalReward / 2, shareInfo.claimedReward);
 
         vm.warp(block.timestamp + lockPeriod / 2);
         generalshare.claimStakeRewards(shareId);
-        shareInfo = generalshare.GetShareInfo(shareId);
+        shareInfo = generalshare.getShareInfo(shareId);
         assertEq(shareInfo.totalReward , shareInfo.claimedReward);
     }
 
@@ -84,7 +77,7 @@ contract GeneralShareTest is StakeCoreTest {
 
         vm.warp(block.timestamp + lockPeriod / 2);
         generalshare.claimStakePrincipal(shareId);
-        IGeneralShare.ShareInfo memory  shareInfo = generalshare.GetShareInfo(shareId);
+        IGeneralShare.ShareInfo memory  shareInfo = generalshare.getShareInfo(shareId);
         assertEq(shareInfo.totalPrincipal , shareInfo.claimedPrincipal);
     }
 }

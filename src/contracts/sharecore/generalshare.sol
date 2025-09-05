@@ -14,8 +14,15 @@ contract GeneralShare is BaseShareCore {
     // Events
     event ShareCreated(uint256 shareId, uint256 startT, uint256 endT, uint256 totalReward, uint256 totalPrincipal);
 
+    struct ShareArgs {
+        bytes claimRewardArgs;
+        bytes claimPrincipalArgs;
+    }
+
     bytes4 immutable public CLAIM_REWARDS_SELECTOR;
     bytes4 immutable public CLAIM_PRINCIPAL_SELECTOR;
+    mapping(uint256 => ShareArgs) private shareArgs;
+
 
     constructor(address owner, address _stakecore, IERC20 token, bytes4 claimRewardsSelector, bytes4 claimPrincipalSelector) UniversalToken(token) Ownable(owner){
         stakecore = _stakecore;
@@ -38,9 +45,6 @@ contract GeneralShare is BaseShareCore {
         shareIds.push(shareId);
         shareInfos[shareId] = ShareInfo({
             isSet: true,
-            claimRewardArgs: claimRewardArgs,
-            claimPrincipalArgs: claimPrincipalArgs,
-
             startTime: startT,
             recycledTime: startT,
             endTime: endT,
@@ -59,6 +63,11 @@ contract GeneralShare is BaseShareCore {
             grantedPrincipal: 0
         });
 
+        shareArgs[shareId] = ShareArgs({
+            claimRewardArgs: claimRewardArgs,
+            claimPrincipalArgs: claimPrincipalArgs
+        });
+
         emit ShareCreated(shareId, startT, endT, totalReward, totalPrincipal);
     }
 
@@ -68,7 +77,7 @@ contract GeneralShare is BaseShareCore {
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
         uint256 _before = balance();
-        _claimStakeRewards(shareInfo.claimRewardArgs);
+        _claimStakeRewards(shareArgs[shareId].claimRewardArgs);
         uint256 _after = balance();
 
         uint256 amount = _after - _before;
@@ -87,7 +96,7 @@ contract GeneralShare is BaseShareCore {
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
         uint256 _before = balance();
-        _claimStakePrincipal(shareInfo.claimPrincipalArgs);
+        _claimStakePrincipal(shareArgs[shareId].claimPrincipalArgs);
         uint256 _after = balance();
 
         uint256 amount = _after - _before;
@@ -103,7 +112,7 @@ contract GeneralShare is BaseShareCore {
 
 
     function _claimStakeRewards(bytes memory args) private {
-        (bool ok,bytes memory retData) = stakecore.call(abi.encodePacked(CLAIM_REWARDS_SELECTOR, args));
+        (bool ok, bytes memory retData) = stakecore.call(abi.encodePacked(CLAIM_REWARDS_SELECTOR, args));
         if (!ok) {
             if (retData.length > 0) {
                 assembly ("memory-safe"){
@@ -116,7 +125,7 @@ contract GeneralShare is BaseShareCore {
     }
 
     function _claimStakePrincipal(bytes memory args) private {
-        (bool ok,bytes memory retData) = stakecore.call(abi.encodePacked(CLAIM_PRINCIPAL_SELECTOR, args));
+        (bool ok, bytes memory retData) = stakecore.call(abi.encodePacked(CLAIM_PRINCIPAL_SELECTOR, args));
         if (!ok) {
             if (retData.length > 0) {
                 assembly ("memory-safe"){
@@ -128,5 +137,9 @@ contract GeneralShare is BaseShareCore {
         }
     }
 
+
+    function getShareArgs(uint256 shareId) public view returns (ShareArgs memory){
+        return shareArgs[shareId];
+    }
 
 }

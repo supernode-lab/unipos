@@ -37,9 +37,6 @@ interface IGeneralShare is BaseError {
 
     struct ShareInfo {
         bool  isSet;
-        bytes claimRewardArgs;
-        bytes claimPrincipalArgs;
-
         uint256 startTime;
         uint256 recycledTime;
         uint256 endTime;

@@ -158,7 +158,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         return shareholdersInfos[_getShareHolderKeyHash(_shareholder, shareId)];
     }
 
-    function GetShareInfo(uint256 shareId) public view returns (ShareInfo memory){
+    function getShareInfo(uint256 shareId) public view returns (ShareInfo memory){
         return shareInfos[shareId];
     }
 

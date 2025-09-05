@@ -50,8 +50,6 @@ contract ShareCore is BaseShareCore {
 
             shareInfos[shareId] = ShareInfo({
                 isSet: true,
-                claimRewardArgs: new bytes(0),
-                claimPrincipalArgs: new bytes(0),
                 startTime: stakeInfo.startTime,
                 recycledTime: stakeInfo.startTime,
                 endTime: stakeInfo.startTime + stakeInfo.lockPeriod,
