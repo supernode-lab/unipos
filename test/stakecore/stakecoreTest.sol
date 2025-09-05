@@ -28,13 +28,13 @@ contract StakeCoreTest is BaseTest {
 
 
     function test_depositSecurity() public {
-        init_depositSecurity(provider0, 100 ether);
+        initDepositSecurity(provider0, 100 ether);
     }
 
 
     function test_stake() public {
         uint256 depositAmount = 100 ether;
-        init_depositSecurity(provider0, depositAmount);
+        initDepositSecurity(provider0, depositAmount);
         uint256 stakeAmount=10 ether;
         vm.startPrank(staker0);
         token.approve(address(stakecore), stakeAmount);
@@ -43,7 +43,7 @@ contract StakeCoreTest is BaseTest {
 
     function test_stake_InsufficientDeposit() public {
         uint256 depositAmount = 100 ether;
-        init_depositSecurity(provider0, depositAmount);
+        initDepositSecurity(provider0, depositAmount);
         uint256 stakeAmount;
         vm.startPrank(staker0);
         stakeAmount = stakecore.getCollateralBySecurityDeposit(depositAmount) + 1;
@@ -54,7 +54,7 @@ contract StakeCoreTest is BaseTest {
 
     function test_stake_minStakeAmount() public {
         uint256 depositAmount = 100 ether;
-        init_depositSecurity(provider0, depositAmount);
+        initDepositSecurity(provider0, depositAmount);
         uint256 stakeAmount;
         vm.startPrank(staker0);
         stakeAmount = minStakeAmount - 1;
@@ -64,7 +64,7 @@ contract StakeCoreTest is BaseTest {
     }
 
 
-    function init_depositSecurity(address provider, uint256 depositAmount) internal {
+    function initDepositSecurity(address provider, uint256 depositAmount) internal {
         vm.startPrank(provider);
         uint256 befAmount = stakecore.totalSecurityDeposit();
         token.approve(address(stakecore), depositAmount);

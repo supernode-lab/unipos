@@ -19,7 +19,7 @@ contract GeneralShareTest is StakeCoreTest {
     }
 
     function init() internal {
-        init_depositSecurity(provider0, 100 ether);
+        initDepositSecurity(provider0, 100 ether);
 
         uint256 stakeAmount = 36 ether;
         vm.startPrank(staker0);
@@ -28,7 +28,7 @@ contract GeneralShareTest is StakeCoreTest {
         vm.stopPrank();
     }
 
-    function init_newShare() public {
+    function initNewShare() public {
         uint256[] memory shareIds = stakecore.getUserStakeIndexes(address(generalshare));
         assert(shareIds.length > 0);
         uint256 shareId = shareIds[0];
@@ -47,7 +47,7 @@ contract GeneralShareTest is StakeCoreTest {
     }
 
     function test_claimStakeRewards() public {
-        init_newShare();
+        initNewShare();
         uint256 shareId = 0;
 
         vm.expectPartialRevert(IStakeCore.NoRewards.selector);
@@ -65,7 +65,7 @@ contract GeneralShareTest is StakeCoreTest {
     }
 
     function test_claimStakePrincipal() public{
-        init_newShare();
+        initNewShare();
         uint256 shareId = 0;
 
         vm.expectPartialRevert(IStakeCore.NoPrincipal.selector);
