@@ -36,19 +36,23 @@ contract Subscription is ShareCore, BaseCredential {
     uint256 public depositedToken;
     uint256 public withdrawnToken;
 
+    modifier onlyAdmin(){
+        requireAdmin(msg.sender);
+        _;
+    }
 
     constructor(address owner, address _stakecore, IERC20 token, address usdtContAddr)ShareCore(owner, _stakecore, token) BaseCredential(owner){
         USDT = IERC20(usdtContAddr);
     }
 
-    function withdrawUsdt(uint256 amount) external onlyOwner nonReentrant {
+    function withdrawUsdt(uint256 amount) external onlyAdmin nonReentrant {
         if (amount + withdrawnUsdt > depositedUsdt) revert  AmountExceedsWithdrawable();
         withdrawnUsdt += amount;
         USDT.safeTransfer(msg.sender, amount);
         emit USDTWithdrawn(msg.sender, amount);
     }
 
-    function withdrawToken(uint256 amount) external onlyOwner nonReentrant {
+    function withdrawToken(uint256 amount) external onlyAdmin nonReentrant {
         if (amount + withdrawnToken > depositedToken) revert  AmountExceedsWithdrawable();
         withdrawnToken += amount;
         heldFunds -= amount;
@@ -125,11 +129,13 @@ contract Subscription is ShareCore, BaseCredential {
                 withdrawnPrincipal: 0
 
             });
+
             shareholderFunds[holderkey] = ShareholderFund({
                 depositedToken: _depositedToken,
                 depositedUsdt: _depositedUsdt
             });
         } else {
+            shareholder.preRecycledReward += needtoRecycleReward;
             shareholder.grantedReward += _grantedReward;
             shareholder.grantedPrincipal += _grantedPrincipal;
             shareholderFunds[holderkey].depositedToken += _depositedToken;
@@ -140,7 +146,7 @@ contract Subscription is ShareCore, BaseCredential {
         shareInfo.grantedPrincipal += _grantedPrincipal;
     }
 
-    function collectUsdt() external onlyOwner nonReentrant returns (uint256) {
+    function collectUsdt() external onlyAdmin nonReentrant returns (uint256) {
 //  withdraw extra token from this contract
         uint256 balance = USDT.balanceOf(address(this));
         uint256 remain = depositedUsdt - withdrawnUsdt;

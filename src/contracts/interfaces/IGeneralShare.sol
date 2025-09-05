@@ -5,7 +5,6 @@ import {BaseError} from "./BaseError.sol";
 
 interface IGeneralShare is BaseError {
     error InvalidShareId(uint256 shareId);
-    error HolderAlreadyExists();
     error StakeCoreAlreadySet();
     error AmountExceedsWithdrawable();
     error AmountExceedsBalance();

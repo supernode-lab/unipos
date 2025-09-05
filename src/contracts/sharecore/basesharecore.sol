@@ -61,22 +61,29 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         uint256 unrecycledReward = _calUnrecycledReward(_startTime, recycledTime, endTime, _grantedReward);
         uint256 needtoRecycleReward = _calNeedToRecycleReward(_startTime, shareInfo.startTime, endTime, _grantedReward);
         if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward + unrecycledReward > shareInfo.totalReward) revert InvalidParameter("grantedReward");
-        bytes32 key = _getShareHolderKeyHash(_owner, shareId);
-        if (shareholdersInfos[key].owner != address(0)) revert HolderAlreadyExists();
-        shareholders.push(ShareHolderKey({
-            owner: _owner,
-            shareId: shareId
-        }));
+        bytes32 holderkey = _getShareHolderKeyHash(_owner, shareId);
+        ShareholderInfo storage shareholder = shareholdersInfos[holderkey];
+        if (shareholder.owner == address(0)) {
+            shareholders.push(ShareHolderKey({
+                owner: _owner,
+                shareId: shareId
+            }));
 
-        shareholdersInfos[key] = ShareholderInfo({
-            owner: _owner,
-            shareId: shareId,
-            preRecycledReward: needtoRecycleReward,
-            grantedReward: _grantedReward,
-            withdrawnReward: 0,
-            grantedPrincipal: _grantedPrincipal,
-            withdrawnPrincipal: 0
-        });
+            shareholdersInfos[holderkey] = ShareholderInfo({
+                owner: _owner,
+                shareId: shareId,
+                preRecycledReward: needtoRecycleReward,
+                grantedReward: _grantedReward,
+                withdrawnReward: 0,
+                grantedPrincipal: _grantedPrincipal,
+                withdrawnPrincipal: 0
+            });
+        }else{
+            shareholder.preRecycledReward += needtoRecycleReward;
+            shareholder.grantedReward += _grantedReward;
+            shareholder.grantedPrincipal += _grantedPrincipal;
+        }
+
         shareInfo.totalRecycledReward += unrecycledReward;
         shareInfo.grantedReward += _grantedReward;
         shareInfo.grantedPrincipal += _grantedPrincipal;
