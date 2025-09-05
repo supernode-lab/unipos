@@ -153,5 +153,4 @@ contract GeneralShare is BaseShareCore {
     function getShareArgs(uint256 shareId) public view returns (ShareArgs memory){
         return shareArgs[shareId];
     }
-
 }

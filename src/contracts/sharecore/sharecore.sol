@@ -126,6 +126,4 @@ contract ShareCore is BaseShareCore {
         heldFunds += amount;
         emit StakePrincipalClaimed(shareId, amount);
     }
-
-
 }
