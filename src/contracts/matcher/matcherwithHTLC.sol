@@ -30,7 +30,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     error OnlyAdmin(address caller);
 
     event Locked(
-        bytes32 swapId,
+        bytes32 dealId,
         address sender,
         address recipient,
         address token,
@@ -38,12 +38,13 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         uint64  timelock,
         bytes32 hashlock
     );
-    event Claimed(bytes32 swapId, bytes32 preimage);
-    event Refunded(bytes32 swapId);
+    event Claimed(bytes32 dealId, bytes32 preimage);
+    event Refunded(bytes32 dealId);
     event StakerInited(address);
     event ProviderInited(address, address[]);
     event DealCreated(uint256 dealId, uint256 targetToken);
     event DealSettled(uint256 dealId, uint256 usedToken);
+    event DealFailed(uint256 dealId);
 
     struct StakeParam {
         IStakeCore stakecore;
@@ -84,7 +85,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
 
     Deal[] private deals;
 
-// swapId => Swap
+// dealId => Swap
     mapping(bytes32 => Swap) public swaps;
 
 
@@ -174,13 +175,13 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     }
 
 /// @notice Lock native (token==address(0)) or ERC20 with a hashlock+timelock (pulls tokens via transferFrom)
-/// @return swapId deterministic ID including sender nonce
+/// @return dealId deterministic ID including sender nonce
     function lockToken(
         uint256 dealId,
         uint256 amount,
         bytes32 hashlock,
         uint64 timelock
-    ) external payable onlyProvider nonReentrant returns (bytes32 swapId) {
+    ) external payable onlyProvider nonReentrant returns (bytes32) {
         if (dealId >= deals.length) revert InvalidDealId();
         if (hashlock == bytes32(0)) revert InvalidParameter("hashlock");
         if (timelock <= block.timestamp) revert InvalidParameter("timelock");
@@ -189,7 +190,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         if (deal.targetToken != amount) revert InvalidParameter("amount");
 
-        swapId = bytes32(dealId);
+        bytes32 swapId = bytes32(dealId);
         if (swaps[swapId].sender != address(0)) revert AlreadyExists();
 
         _receiveToken(amount);
@@ -205,61 +206,64 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         });
 
         emit Locked(swapId, msg.sender, staker, address(token()), amount, timelock, hashlock);
+        return swapId;
     }
 
 /// @notice Claim funds by providing the correct preimage before timelock
-    function stake(bytes32 swapId, bytes32 preimage) external onlyStaker nonReentrant {
-        Swap storage s = swaps[swapId];
+    function stake(bytes32 dealId, bytes32 preimage) external onlyStaker nonReentrant {
+        Swap storage s = swaps[dealId];
         if (s.sender == address(0)) revert NotFound();
         if (s.claimed) revert AlreadyClaimed();
         if (s.refunded) revert AlreadyRefunded();
         if (block.timestamp > s.timelock) revert NotBeforeExpiry();
         if (keccak256(abi.encodePacked(preimage)) != s.hashlock) revert HashlockMismatch();
-        uint256 dealId = s.dealId;
-        if (dealId >= deals.length) revert InvalidDealId();
-        Deal storage deal = deals[dealId];
+        uint256 _dealId = s.dealId;
+        if (_dealId >= deals.length) revert InvalidDealId();
+        Deal storage deal = deals[_dealId];
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
-        _stake(dealId);
+        try  this._stake(_dealId) {}catch{
+            deal.status = DealStatus.Abort;
+            emit DealFailed(_dealId);
+            _sendToken(msg.sender, deal.targetToken);
+        }
+
         s.claimed = true;
         s.preimage = preimage;
 
-        emit Claimed(swapId, preimage);
+        emit Claimed(dealId, preimage);
     }
 
 /// @notice Refund to sender after timelock passes if not claimed
-    function abort(bytes32 swapId) external onlyProvider nonReentrant {
-        Swap storage s = swaps[swapId];
+    function abort(bytes32 dealId) external onlyProvider nonReentrant {
+        Swap storage s = swaps[dealId];
         if (s.sender == address(0)) revert NotFound();
         if (s.refunded) revert AlreadyRefunded();
         if (s.claimed) revert AlreadyClaimed();
         if (msg.sender != s.sender) revert UnauthorizedCaller(msg.sender);
         if (block.timestamp <= s.timelock) revert NotAfterExpiry();
-        uint256 dealId = s.dealId;
-        if (dealId >= deals.length) revert InvalidDealId();
-        Deal storage deal = deals[dealId];
+        uint256 _dealId = s.dealId;
+        if (_dealId >= deals.length) revert InvalidDealId();
+        Deal storage deal = deals[_dealId];
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         s.refunded = true;
         deal.status = DealStatus.Abort;
         _sendToken(s.sender, s.amount);
-        emit Refunded(swapId);
+        emit Refunded(dealId);
     }
 
 /// @notice View helper
-    function getSwap(bytes32 swapId) external view returns (Swap memory) {
-        if (swaps[swapId].sender == address(0)) revert NotFound();
-        return swaps[swapId];
+    function getSwap(bytes32 dealId) external view returns (Swap memory) {
+        if (swaps[dealId].sender == address(0)) revert NotFound();
+        return swaps[dealId];
     }
 
 // ======= internal payout =======
-    function _stake(uint256 dealId) private {
-        if (dealId >= deals.length) revert InvalidDealId();
+    function _stake(uint256 dealId) external {
+        require(msg.sender==address(this),"only self");
         Deal storage deal = deals[dealId];
-        if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
-
-
         uint256 paramsLen = deal.params.length;
         for (uint256 i = 0; i < paramsLen; i++) {
-            StakeParam storage p = deal.params[i];
+            StakeParam memory p = deal.params[i];
             if (p.apyAmount != 0) {
                 _callStakecoreDepositSecurity(p.stakecore, p.apyAmount);
             }
@@ -269,7 +273,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
             }
         }
 
-        deals[dealId].status = DealStatus.Success;
+        deal.status = DealStatus.Success;
         emit DealSettled(dealId, deal.targetToken);
     }
 
