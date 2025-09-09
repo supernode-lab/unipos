@@ -10,14 +10,14 @@ interface IGeneralShare is BaseError {
     error AmountExceedsBalance();
 
     event RewardsAccrued(uint256 shareId, uint256 recycledT, uint256 recycledRewards);
+    event Recycled(uint256 shareId, uint256 amount);
     event ShareholderAdded(address  shareholder, uint256 shareId, uint256 startTime, uint256 grantedReward, uint256 grantedPrincipal);
-    event FundsAllocated(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal);
     event RewardsClaimed(address  shareholder, uint256 shareId, uint256 amount);
     event PrincipalClaimed(address  shareholder, uint256 shareId, uint256 amount);
-    event ExcessCollected(uint256 amount);
 
     event StakeRewardsClaimed(uint256 shareId, uint256 amount);
     event StakePrincipalClaimed(uint256 shareId, uint256 amount);
+    event ExcessCollected(uint256 amount);
 
     struct ShareholderInfo {
         address owner;

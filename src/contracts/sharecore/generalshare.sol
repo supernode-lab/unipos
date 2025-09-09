@@ -13,6 +13,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract GeneralShare is BaseShareCore {
     // Events
     event ShareCreated(uint256 shareId, uint256 startT, uint256 endT, uint256 totalReward, uint256 totalPrincipal);
+    event FundsAllocated(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal);
 
     struct ShareArgs {
         bytes claimRewardArgs;

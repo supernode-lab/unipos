@@ -39,6 +39,22 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit RewardsAccrued(shareId, recycledT, recycledReward);
     }
 
+    function recycle(uint256 shareId, uint256 amount) external onlyOwner nonReentrant {
+        ShareInfo memory shareInfo = shareInfos[shareId];
+        if (!shareInfo.isSet) revert InvalidShareId(shareId);
+
+        uint256 available = shareInfo.totalRecycledReward - shareInfo.withdrawnRecycledReward;
+        if (amount > available) revert AmountExceedsWithdrawable();
+
+        uint256 withdrawableReward = shareInfo.claimedReward - shareInfo.withdrawnReward;
+        if (amount > withdrawableReward) revert AmountExceedsBalance();
+        shareInfos[shareId].withdrawnReward += amount;
+        shareInfos[shareId].withdrawnRecycledReward += amount;
+        heldFunds -= amount;
+        _sendToken(msg.sender, amount);
+        emit Recycled(shareId, amount);
+    }
+
     function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyOwner nonReentrant {
         if (!shareInfos[shareId].isSet) revert InvalidShareId(shareId);
         _addShareholder(_owner, shareId, shareInfos[shareId].startTime, _grantedReward, _grantedPrincipal);
