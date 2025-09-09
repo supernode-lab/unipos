@@ -180,11 +180,11 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         uint256 dealId,
         uint256 amount,
         bytes32 hashlock,
-        uint64 timelock
+        uint64 periodlock
     ) external payable onlyProvider nonReentrant returns (bytes32) {
         if (dealId >= deals.length) revert InvalidDealId();
         if (hashlock == bytes32(0)) revert InvalidParameter("hashlock");
-        if (timelock <= block.timestamp) revert InvalidParameter("timelock");
+        if (periodlock == 0) revert InvalidParameter("periodlock");
 
         Deal storage deal = deals[dealId];
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
@@ -194,6 +194,8 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         if (swaps[swapId].sender != address(0)) revert AlreadyExists();
 
         _receiveToken(amount);
+
+        uint64 timelock = periodlock + uint64(block.timestamp);
         swaps[swapId] = Swap({
             dealId: dealId,
             sender: msg.sender,
@@ -259,7 +261,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
 
 // ======= internal payout =======
     function _stake(uint256 dealId) external {
-        require(msg.sender==address(this),"only self");
+        require(msg.sender == address(this), "only self");
         Deal storage deal = deals[dealId];
         uint256 paramsLen = deal.params.length;
         for (uint256 i = 0; i < paramsLen; i++) {

@@ -46,7 +46,6 @@ contract HTLC is BaseError, ReentrancyGuard {
     event Claimed(bytes32 swapId, bytes32 preimage);
     event Refunded(bytes32 swapId);
 
-
 // swapId => Swap
     mapping(bytes32 => Swap) public swaps;
 
@@ -62,15 +61,15 @@ contract HTLC is BaseError, ReentrancyGuard {
         uint256 amount,
         address recipient,
         bytes32 hashlock,
-        uint64 timelock
+        uint64 periodlock
     ) external payable nonReentrant returns (bytes32 swapId) {
         if (recipient == address(0)) revert InvalidParameter("recipient");
         if (hashlock == bytes32(0)) revert InvalidParameter("hashlock");
         if (amount == 0) revert  InvalidParameter("amount");
-        if (timelock <= block.timestamp) revert InvalidParameter("timelock");
+        if (periodlock == 0) revert InvalidParameter("periodlock");
 
         uint256 nonce = ++nonces[msg.sender];
-        swapId = keccak256(abi.encodePacked(block.chainid, msg.sender, recipient, token, amount, timelock, hashlock, nonce));
+        swapId = keccak256(abi.encodePacked(block.chainid, msg.sender, recipient, token, amount, periodlock, hashlock, nonce));
         if (swaps[swapId].sender != address(0)) revert AlreadyExists();
 
         if (token == address(0)) {
@@ -87,7 +86,7 @@ contract HTLC is BaseError, ReentrancyGuard {
             amount = credited;
         }
 
-
+        uint64 timelock = periodlock + uint64(block.timestamp);
         swaps[swapId] = Swap({
             sender: msg.sender,
             recipient: recipient,
