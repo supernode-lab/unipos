@@ -2,9 +2,9 @@
 pragma solidity ^0.8.20;
 
 import {SignedCredential} from "../Types/Structs/Credentials.sol";
+import {DataHasher} from "../libraries/Datahasher.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {DataHasher} from "../libraries/DataHasher.sol";
 
 abstract contract BaseCredential is AccessControl {
     error InvalidVersion();
@@ -12,36 +12,23 @@ abstract contract BaseCredential is AccessControl {
     error NonceTooLow();
     error InvalidSig();
 
+    bytes32 public constant GOVERNOR_ROLE = keccak256("GOVERNOR_ROLE");
+    bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
     mapping(address provider => uint256 nonce)public user2nonce;
-    bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR");
     uint8 private _validatorThreshold = 1;
 
 
-    constructor(address admin) {
-        require(admin != address(0), "Governor cannot be zero");
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(VALIDATOR_ROLE, admin);
+    constructor(address governor) {
+        require(governor != address(0), "Governor cannot be zero");
+        _setRoleAdmin(GOVERNOR_ROLE, GOVERNOR_ROLE);
+        _setRoleAdmin(VALIDATOR_ROLE, GOVERNOR_ROLE);
+        _grantRole(GOVERNOR_ROLE, governor);
+        _grantRole(VALIDATOR_ROLE, governor);
     }
 
     modifier validateAndBurnCred(SignedCredential calldata sc, bytes memory params){
         _validateAndBurnCred(DataHasher.gethashAt(msg.sender, params, sc.vc), sc);
         _;
-    }
-
-    function addAdmin(address account) external {
-        grantRole(DEFAULT_ADMIN_ROLE, account);
-    }
-
-    function removeAdmin(address account) external {
-        revokeRole(DEFAULT_ADMIN_ROLE, account);
-    }
-
-    function requireAdmin(address account) public view {
-        require(hasRole(DEFAULT_ADMIN_ROLE, account), "Admin only");
-    }
-
-    function isAdmin(address account) public view returns (bool) {
-        return hasRole(DEFAULT_ADMIN_ROLE, account);
     }
 
     function addValidator(address account) external {
@@ -56,10 +43,9 @@ abstract contract BaseCredential is AccessControl {
         require(hasRole(VALIDATOR_ROLE, account), "Validator only");
     }
 
-    function isValidator(address account) public view  returns (bool) {
+    function isValidator(address account) public view returns (bool) {
         return hasRole(VALIDATOR_ROLE, account);
     }
-
 
     function getRequiredValidatorSignatures()
     public
@@ -71,7 +57,7 @@ abstract contract BaseCredential is AccessControl {
 
     function setRequiredValidatorSignatures(
         uint8 value
-    ) public  onlyRole(DEFAULT_ADMIN_ROLE) {
+    ) public onlyRole(GOVERNOR_ROLE) {
         _validatorThreshold = value;
     }
 

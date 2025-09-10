@@ -3,7 +3,9 @@ pragma solidity ^0.8.20;
 
 import {SignedCredential} from "../../Types/Structs/Credentials.sol";
 import {BaseCredential} from "../../base/baseCredential.sol";
+import {BaseShareCore} from "./basesharecore.sol";
 import {ShareCore} from "./sharecore.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -36,12 +38,8 @@ contract Subscription is ShareCore, BaseCredential {
     uint256 public depositedToken;
     uint256 public withdrawnToken;
 
-    modifier onlyAdmin(){
-        requireAdmin(msg.sender);
-        _;
-    }
 
-    constructor(address owner, address _stakecore, IERC20 token, address usdtContAddr)ShareCore(owner, _stakecore, token) BaseCredential(owner){
+    constructor(address admin, address governor, address _stakecore, IERC20 token, address usdtContAddr, bool enableShareholderWhiteList)ShareCore(admin, _stakecore, token, enableShareholderWhiteList) BaseCredential(governor){
         USDT = IERC20(usdtContAddr);
     }
 
@@ -71,6 +69,9 @@ contract Subscription is ShareCore, BaseCredential {
     )
     validateAndBurnCred(sc, abi.encode(_owner, _shareId, amount, _grantedReward, _grantedPrincipal)) nonReentrant external {
         if (!shareInfos[_shareId].isSet) revert InvalidShareId(_shareId);
+        if (ENABLE_SHAREHOLDER_WHITE_LIST) {
+            _checkRole(SHAREHOLDER_ROLE, _owner);
+        }
 
         depositedUsdt += amount;
         USDT.safeTransferFrom(msg.sender, address(this), amount);
@@ -88,6 +89,9 @@ contract Subscription is ShareCore, BaseCredential {
     )
     validateAndBurnCred(sc, abi.encode(_owner, _shareId, amount, _grantedReward, _grantedPrincipal)) nonReentrant external {
         if (!shareInfos[_shareId].isSet) revert InvalidShareId(_shareId);
+        if (ENABLE_SHAREHOLDER_WHITE_LIST) {
+            _checkRole(SHAREHOLDER_ROLE, _owner);
+        }
 
         depositedToken += amount;
         heldFunds += amount;
@@ -165,6 +169,18 @@ contract Subscription is ShareCore, BaseCredential {
     }
 
     function addShareholderWithStartTime(address, uint256, uint256, uint256, uint256) external pure override {
+        revert Forbid();
+    }
+
+    function grantRole(bytes32 role, address account) public override(BaseShareCore, AccessControl) onlyRole(getRoleAdmin(role)) {
+        _grantRole(role, account);
+    }
+
+    function revokeRole(bytes32, address) public pure override(BaseShareCore, AccessControl) {
+        revert Forbid();
+    }
+
+    function renounceRole(bytes32, address) public pure override(BaseShareCore, AccessControl) {
         revert Forbid();
     }
 }

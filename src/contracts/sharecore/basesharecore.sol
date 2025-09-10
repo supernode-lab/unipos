@@ -3,14 +3,19 @@ pragma solidity ^0.8.20;
 
 import {UniversalToken} from "../../base/UniversalToken.sol";
 import {IGeneralShare} from "../interfaces/IGeneralShare.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title POS Stake Core Contract
  * @notice
  */
-abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuard, Ownable {
+abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuard, AccessControl {
+    bytes32 public constant SHAREHOLDER_ROLE = keccak256("SHAREHOLDER");
+
+    bool public immutable ENABLE_SHAREHOLDER_WHITE_LIST;
+
     address  public  stakecore;
     uint256[] public shareIds;
     mapping(uint256 shareId => ShareInfo) internal shareInfos;
@@ -18,13 +23,29 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
     mapping(bytes32 => ShareholderInfo) internal shareholdersInfos;
     uint256 public heldFunds;
 
-    function initStakeCore(address) external virtual;
+    modifier onlyAdmin() {
+        _checkRole(DEFAULT_ADMIN_ROLE);
+        _;
+    }
+
+    constructor(address admin, address _stakecore, IERC20 token, bool enableShareholderWhiteList) UniversalToken(token) {
+        stakecore = _stakecore;
+        ENABLE_SHAREHOLDER_WHITE_LIST = enableShareholderWhiteList;
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+    }
+
+    function initStakeCore(address _stakecore) external virtual onlyAdmin nonReentrant {
+        if (address(stakecore) != address(0)) revert StakeCoreAlreadySet();
+        if (_stakecore == address(0)) revert InvalidParameter("stakecore");
+
+        stakecore = _stakecore;
+    }
 
     function claimStakeRewards(uint256 shareId) external virtual;
 
     function claimStakePrincipal(uint256 shareId) external virtual;
 
-    function accrueRewards(uint256 shareId, uint256 recycledT) external onlyOwner nonReentrant {
+    function accrueRewards(uint256 shareId, uint256 recycledT) external onlyAdmin nonReentrant {
         ShareInfo memory shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
@@ -39,7 +60,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit RewardsAccrued(shareId, recycledT, recycledReward);
     }
 
-    function recycle(uint256 shareId, uint256 amount) external onlyOwner nonReentrant {
+    function recycle(uint256 shareId, uint256 amount) external onlyAdmin nonReentrant {
         ShareInfo memory shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
@@ -55,16 +76,20 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit Recycled(shareId, amount);
     }
 
-    function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyOwner nonReentrant {
+    function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyAdmin nonReentrant {
         if (!shareInfos[shareId].isSet) revert InvalidShareId(shareId);
         _addShareholder(_owner, shareId, shareInfos[shareId].startTime, _grantedReward, _grantedPrincipal);
     }
 
-    function addShareholderWithStartTime(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyOwner nonReentrant {
+    function addShareholderWithStartTime(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyAdmin nonReentrant {
         _addShareholder(_owner, shareId, _startTime, _grantedReward, _grantedPrincipal);
     }
 
     function _addShareholder(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) private {
+        if (ENABLE_SHAREHOLDER_WHITE_LIST) {
+            _checkRole(SHAREHOLDER_ROLE, _owner);
+        }
+
         ShareInfo storage shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
@@ -94,7 +119,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
                 grantedPrincipal: _grantedPrincipal,
                 withdrawnPrincipal: 0
             });
-        }else{
+        } else {
             shareholder.preRecycledReward += needtoRecycleReward;
             shareholder.grantedReward += _grantedReward;
             shareholder.grantedPrincipal += _grantedPrincipal;
@@ -153,7 +178,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit PrincipalClaimed(msg.sender, shareId, withdrawablePrincipal);
     }
 
-    function collect() external onlyOwner nonReentrant returns (uint256) {
+    function collect() external onlyAdmin nonReentrant returns (uint256) {
 //  withdraw extra token from this contract
         uint256 bal = balance();
         uint256 lockedFunds = heldFunds;
@@ -178,6 +203,26 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
 
     function getShareInfo(uint256 shareId) public view returns (ShareInfo memory){
         return shareInfos[shareId];
+    }
+
+    function isAdmin(address addr) public view returns (bool){
+        return hasRole(DEFAULT_ADMIN_ROLE, addr);
+    }
+
+    function isShareholder(address addr) public view returns (bool){
+        return hasRole(SHAREHOLDER_ROLE, addr);
+    }
+
+    function grantRole(bytes32 role, address account) public virtual override onlyRole(getRoleAdmin(role)) {
+        _grantRole(role, account);
+    }
+
+    function revokeRole(bytes32, address) public virtual pure override {
+        revert Forbid();
+    }
+
+    function renounceRole(bytes32, address) public virtual pure override {
+        revert Forbid();
     }
 
     function _calculateShareholderRewards(ShareholderInfo storage holderinfo, uint256 shareId) internal view returns (uint256){

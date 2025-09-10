@@ -14,7 +14,7 @@ contract GeneralShareTest is StakeCoreTest {
     function setUp() public override {
         super.setUp();
 
-        generalshare = new  GeneralShare(admin, address(stakecore), token, StakeCore.withdrawRewards.selector, StakeCore.withdrawPrincipal.selector);
+        generalshare = new  GeneralShare(admin, address(stakecore), token, false,StakeCore.withdrawRewards.selector, StakeCore.withdrawPrincipal.selector);
         init();
     }
 

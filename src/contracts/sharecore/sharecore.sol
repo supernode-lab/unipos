@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {UniversalToken} from "../../base/UniversalToken.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
 import {BaseShareCore} from "./basesharecore.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
@@ -16,15 +14,13 @@ contract ShareCore is BaseShareCore {
     event Registered(uint256[] shareIds);
     event StakeRewardsClaimedBatch(uint256[] shareIds, uint256[] amounts);
 
-    constructor(address owner, address _stakecore, IERC20 token) UniversalToken(token) Ownable(owner){
+    constructor(address admin, address _stakecore, IERC20 token, bool enableShareholderWhiteList) BaseShareCore(admin, _stakecore, token, enableShareholderWhiteList){
         if (address(_stakecore) != address(0)) {
             if (IStakeCore(_stakecore).token() != token) revert InvalidParameter("stakecore/token");
         }
-
-        stakecore = _stakecore;
     }
 
-    function initStakeCore(address _stakecore) external override onlyOwner nonReentrant {
+    function initStakeCore(address _stakecore) external override onlyAdmin nonReentrant {
         if (address(stakecore) != address(0)) revert StakeCoreAlreadySet();
         if (address(_stakecore) == address(0)) revert InvalidParameter("stakecore");
         if (IStakeCore(_stakecore).token() != token()) revert InvalidParameter("stakecore");
@@ -88,11 +84,11 @@ contract ShareCore is BaseShareCore {
         uint256 lenMax = shareIds.length;
         if (startI >= lenMax) return;
 
-        if (len == 0||startI + len > lenMax) {
+        if (len == 0 || startI + len > lenMax) {
             len = lenMax - startI;
         }
 
-        uint256 endI =  startI+len;
+        uint256 endI = startI + len;
         uint256[] memory _shareIds = new uint256[](len);
         uint256[] memory amounts = new uint256[](len);
 
@@ -109,7 +105,8 @@ contract ShareCore is BaseShareCore {
 
             }
 
-            unchecked { ++i; ++j; }
+            unchecked {++i;
+                ++j;}
         }
 
         if (sum > 0) {

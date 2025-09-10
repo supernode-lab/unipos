@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {UniversalToken} from "../../base/UniversalToken.sol";
 import {BaseShareCore} from "./basesharecore.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
@@ -25,20 +23,13 @@ contract GeneralShare is BaseShareCore {
     mapping(uint256 => ShareArgs) private shareArgs;
 
 
-    constructor(address owner, address _stakecore, IERC20 token, bytes4 claimRewardsSelector, bytes4 claimPrincipalSelector) UniversalToken(token) Ownable(owner){
-        stakecore = _stakecore;
+    constructor(address owner, address _stakecore, IERC20 token, bool enableShareholderWhiteList, bytes4 claimRewardsSelector, bytes4 claimPrincipalSelector) BaseShareCore(owner, _stakecore, token, enableShareholderWhiteList) {
         CLAIM_REWARDS_SELECTOR = claimRewardsSelector;
         CLAIM_PRINCIPAL_SELECTOR = claimPrincipalSelector;
     }
 
-    function initStakeCore(address _stakecore) external override onlyOwner nonReentrant {
-        if (address(stakecore) != address(0)) revert StakeCoreAlreadySet();
-        if (_stakecore == address(0)) revert InvalidParameter("stakecore");
 
-        stakecore = _stakecore;
-    }
-
-    function newShare(bytes calldata claimRewardArgs, bytes calldata claimPrincipalArgs, uint256 startT, uint256 endT, uint256 totalReward, uint256 totalPrincipal) external onlyOwner nonReentrant {
+    function newShare(bytes calldata claimRewardArgs, bytes calldata claimPrincipalArgs, uint256 startT, uint256 endT, uint256 totalReward, uint256 totalPrincipal) external onlyAdmin nonReentrant {
         if (startT >= endT) revert InvalidParameter("time");
         if (totalReward + totalPrincipal == 0) revert InvalidParameter("totals");
 
@@ -72,7 +63,7 @@ contract GeneralShare is BaseShareCore {
         emit ShareCreated(shareId, startT, endT, totalReward, totalPrincipal);
     }
 
-    function allocateFunds(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal) external onlyOwner nonReentrant {
+    function allocateFunds(uint256 shareId, uint256 allocatedReward, uint256 allocatedPrincipal) external onlyAdmin nonReentrant {
         ShareInfo storage shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
         uint256 freeFunds = balance() - heldFunds;

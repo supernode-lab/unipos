@@ -260,7 +260,7 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
         _grantRole(role, account);
     }
 
-    function revokeRole(bytes32 role, address account) public override {
+    function revokeRole(bytes32, address) public pure override {
         revert Forbid();
     }
 

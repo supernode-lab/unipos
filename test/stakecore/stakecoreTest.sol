@@ -73,10 +73,4 @@ contract StakeCoreTest is BaseTest {
         assertEq(stakecore.totalSecurityDeposit() - befAmount, depositAmount);
         vm.stopPrank();
     }
-
-    function test_aaa() public {
-        bytes32 a = 0xc50e09ba6d0b83a47102983e118012a81e291730b6888c7dcc2433b0f9864ecc;
-        bytes32 b = keccak256(abi.encodePacked(a));
-        console.logBytes32(b);
-    }
 }
