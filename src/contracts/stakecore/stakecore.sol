@@ -16,6 +16,11 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     using SafeERC20 for IERC20;
 
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
+    bytes32 public constant STAKER_ROLE = keccak256("STAKER");
+    bytes32 public constant BENEFICIARY_ROLE = keccak256("BENEFICIARY");
+
+    bool public immutable ENABLE_STAKER_WHITE_LIST;
+    bool public immutable ENABLE_BENEFICIARY_WHITE_LIST;
     uint256 public constant PRECISION = 1e18;
 
     uint256 public immutable LOCK_PERIOD;
@@ -33,16 +38,17 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     // total security deposit amount
     uint256 public totalSecurityDeposit;
 
-
     IStakeCore.StakeInfo[] private stakeRecords;
     mapping(address => uint256[]) private userStakeIndexes; // 每个用户的质押记录
 
-    constructor(address admin, address[] memory providers, IERC20 _token, uint256 lockPeriod, uint256 cliffPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount)UniversalToken(_token) {
+    constructor(address admin, address[] memory providers, IERC20 _token, uint256 lockPeriod, uint256 cliffPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount, bool enableStakerWhiteList, bool enableBeneficiaryWhiteList)UniversalToken(_token) {
         if (admin == address(0)) revert InvalidParameter("admin");
         if (providers.length == 0) revert InvalidParameter("providers");
         if (_installmentNum == 0) revert InvalidParameter("installmentNum");
         if (cliffPeriod > lockPeriod) revert InvalidParameter("cliffPeriod");
 
+        ENABLE_STAKER_WHITE_LIST = enableStakerWhiteList;
+        ENABLE_BENEFICIARY_WHITE_LIST = enableBeneficiaryWhiteList;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _setRoleAdmin(PROVIDER_ROLE, PROVIDER_ROLE);
         for (uint256 i = 0; i < providers.length; i++) {
@@ -92,6 +98,14 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     function stake(address owner, uint256 _amount) external payable nonReentrant {
         if (owner == address(0)) revert InvalidParameter("owner");
         if (_amount == 0 || _amount < MIN_STAKE_AMOUNT) revert InvalidParameter("amount");
+        if (ENABLE_STAKER_WHITE_LIST) {
+            _checkRole(STAKER_ROLE);
+        }
+
+        if (ENABLE_BENEFICIARY_WHITE_LIST) {
+            _checkRole(BENEFICIARY_ROLE, owner);
+        }
+
         uint256 rewards;
         uint256 principal;
         if (APY == 0) {
@@ -234,13 +248,20 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
         return hasRole(PROVIDER_ROLE, addr);
     }
 
+    function isStaker(address addr) public view returns (bool){
+        return hasRole(STAKER_ROLE, addr);
+    }
+
+    function isBeneficiary(address addr) public view returns (bool){
+        return hasRole(BENEFICIARY_ROLE, addr);
+    }
+
     function grantRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
         _grantRole(role, account);
     }
 
-    function revokeRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
-        if (account == msg.sender) revert InvalidParameter("account");
-        _revokeRole(role, account);
+    function revokeRole(bytes32 role, address account) public override {
+        revert Forbid();
     }
 
     function renounceRole(bytes32, address) public pure override {

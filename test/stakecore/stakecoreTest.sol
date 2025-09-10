@@ -5,6 +5,7 @@ import {BaseError} from "../../src/contracts/interfaces/BaseError.sol";
 import {IStakeCore} from "../../src/contracts/interfaces/IStakeCore.sol";
 import {StakeCore} from "../../src/contracts/stakecore/stakecore.sol";
 import {BaseTest} from "../base/base.sol";
+import {console} from "forge-std/console.sol";
 
 contract StakeCoreTest is BaseTest {
     address public provider0 = getAddressFromString("stakecore_provider0");
@@ -21,7 +22,7 @@ contract StakeCoreTest is BaseTest {
         super.setUp();
         address[] memory providers = new address[](1);
         providers[0] = provider0;
-        stakecore = new StakeCore(admin, providers, token, lockPeriod, cliffPeriod, apy, installmentNum, minStakeAmount);
+        stakecore = new StakeCore(admin, providers, token, lockPeriod, cliffPeriod, apy, installmentNum, minStakeAmount,false,false);
         token.mint(provider0, 1000 ether);
         token.mint(staker0, 1000 ether);
     }
@@ -35,7 +36,7 @@ contract StakeCoreTest is BaseTest {
     function test_stake() public {
         uint256 depositAmount = 100 ether;
         initDepositSecurity(provider0, depositAmount);
-        uint256 stakeAmount=10 ether;
+        uint256 stakeAmount = 10 ether;
         vm.startPrank(staker0);
         token.approve(address(stakecore), stakeAmount);
         stakecore.stake(staker0, stakeAmount);
@@ -71,5 +72,11 @@ contract StakeCoreTest is BaseTest {
         stakecore.depositSecurity(depositAmount);
         assertEq(stakecore.totalSecurityDeposit() - befAmount, depositAmount);
         vm.stopPrank();
+    }
+
+    function test_aaa() public {
+        bytes32 a = 0xc50e09ba6d0b83a47102983e118012a81e291730b6888c7dcc2433b0f9864ecc;
+        bytes32 b = keccak256(abi.encodePacked(a));
+        console.logBytes32(b);
     }
 }
