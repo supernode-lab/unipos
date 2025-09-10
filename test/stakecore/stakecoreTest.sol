@@ -5,7 +5,6 @@ import {BaseError} from "../../src/contracts/interfaces/BaseError.sol";
 import {IStakeCore} from "../../src/contracts/interfaces/IStakeCore.sol";
 import {StakeCore} from "../../src/contracts/stakecore/stakecore.sol";
 import {BaseTest} from "../base/base.sol";
-import {console} from "forge-std/console.sol";
 
 contract StakeCoreTest is BaseTest {
     address public provider0 = getAddressFromString("stakecore_provider0");

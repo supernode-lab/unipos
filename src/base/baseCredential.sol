@@ -12,8 +12,8 @@ abstract contract BaseCredential is AccessControl {
     error NonceTooLow();
     error InvalidSig();
 
-    bytes32 public constant GOVERNOR_ROLE = keccak256("GOVERNOR_ROLE");
-    bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
+    bytes32 public constant GOVERNOR_ROLE = keccak256("GOVERNOR");
+    bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR");
     mapping(address provider => uint256 nonce)public user2nonce;
     uint8 private _validatorThreshold = 1;
 

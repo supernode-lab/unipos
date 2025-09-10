@@ -205,26 +205,6 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         return shareInfos[shareId];
     }
 
-    function isAdmin(address addr) public view returns (bool){
-        return hasRole(DEFAULT_ADMIN_ROLE, addr);
-    }
-
-    function isShareholder(address addr) public view returns (bool){
-        return hasRole(SHAREHOLDER_ROLE, addr);
-    }
-
-    function grantRole(bytes32 role, address account) public virtual override onlyRole(getRoleAdmin(role)) {
-        _grantRole(role, account);
-    }
-
-    function revokeRole(bytes32, address) public virtual pure override {
-        revert Forbid();
-    }
-
-    function renounceRole(bytes32, address) public virtual pure override {
-        revert Forbid();
-    }
-
     function _calculateShareholderRewards(ShareholderInfo storage holderinfo, uint256 shareId) internal view returns (uint256){
         if (shareInfos[shareId].totalReward == 0 || shareInfos[shareId].claimedReward == 0) {
             return 0;
@@ -252,5 +232,25 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
 
     function _getShareHolderKeyHash(address owner, uint256 shareId) internal pure returns (bytes32) {
         return keccak256(abi.encode(owner, shareId));
+    }
+
+    function isAdmin(address addr) public view returns (bool){
+        return hasRole(DEFAULT_ADMIN_ROLE, addr);
+    }
+
+    function isShareholder(address addr) public view returns (bool){
+        return hasRole(SHAREHOLDER_ROLE, addr);
+    }
+
+    function grantRole(bytes32 role, address account) public virtual override onlyRole(getRoleAdmin(role)) {
+        _grantRole(role, account);
+    }
+
+    function revokeRole(bytes32, address) public virtual pure override {
+        revert Forbid();
+    }
+
+    function renounceRole(bytes32, address) public virtual pure override {
+        revert Forbid();
     }
 }

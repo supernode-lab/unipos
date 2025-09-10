@@ -77,7 +77,8 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         DealStatus status;
     }
 
-
+    bytes32 public constant STAKECORE_ROLE=keccak256("STAKECORE");
+    bytes32 public constant BENEFICIARY_ROLE = keccak256("BENEFICIARY");
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
 
     address public staker;
@@ -89,28 +90,27 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     mapping(bytes32 => Swap) public swaps;
 
 
+    modifier onlyAdmin() {
+        _onlyAdmin();
+        _;
+    }
+
     modifier onlyStaker(){
-        if (msg.sender != staker) revert OnlyStaker(msg.sender);
+        _onlyStaker();
         _;
     }
 
     modifier onlyProvider(){
-        if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
+        _onlyProvider();
         _;
     }
 
     modifier onlyStakerOrProvider(){
-        if (msg .sender != staker &&
-        msg.sender != provider &&
-            !hasRole(PROVIDER_ROLE, msg.sender)
-        ) revert OnlyStakerOrProvider(msg.sender);
+        _onlyStakerOrProvider();
         _;
     }
 
-    modifier onlyAdmin() {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
-        _;
-    }
+
 
     constructor(address admin, address token)  UniversalToken(IERC20(token)){
         if (admin == address(0)) revert InvalidParameter("admin");
@@ -144,8 +144,9 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     function newDeal(StakeParam[] calldata stakeParams) external nonReentrant onlyStakerOrProvider {
         uint256 targetToken;
         for (uint256 i = 0; i < stakeParams.length; i++) {
-            if (stakeParams[i].beneficiary == address(0)) revert InvalidParameter("stakeParams.beneficiary");
-            if (address(stakeParams[i].stakecore) == address(0)) revert InvalidParameter("stakeParams.stakecore");
+            if (!isBeneficiary(stakeParams[i].beneficiary))revert InvalidParameter("stakeParams.beneficiary");
+            if (!isStakecore(address(stakeParams[i].stakecore))) revert InvalidParameter("stakeParams.stakecore");
+
             uint256 stakeAmount = stakeParams[i].stakeAmount;
             uint256 apyAmount = stakeParams[i].apyAmount;
             if (stakeAmount + apyAmount == 0) revert InvalidParameter("stakeParams.stakeAmount/apyAmount");
@@ -300,6 +301,13 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         }
     }
 
+    function dealsLength() external view returns (uint256) {return deals.length;}
+
+    function getDeal(uint256 dealId) external view returns (Deal memory) {
+        if (dealId >= deals.length) revert InvalidDealId();
+        return deals[dealId];
+    }
+
     function revokeRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
         if (role == PROVIDER_ROLE && account == provider) revert ForbidRevokeMainProvider();
         _revokeRole(role, account);
@@ -311,10 +319,30 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         super.renounceRole(role, account);
     }
 
-    function dealsLength() external view returns (uint256) {return deals.length;}
+    function isStakecore(address addr) public view returns (bool){
+        return hasRole(STAKECORE_ROLE, addr);
+    }
 
-    function getDeal(uint256 dealId) external view returns (Deal memory) {
-        if (dealId >= deals.length) revert InvalidDealId();
-        return deals[dealId];
+    function isBeneficiary(address addr) public view returns (bool){
+        return hasRole(BENEFICIARY_ROLE, addr);
+    }
+
+    function _onlyAdmin() internal view{
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
+    }
+
+    function _onlyStaker() internal view{
+        if (msg.sender != staker) revert OnlyStaker(msg.sender);
+    }
+
+    function _onlyProvider() internal view{
+        if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
+    }
+
+    function _onlyStakerOrProvider() internal view{
+        if (msg .sender != staker &&
+        msg.sender != provider &&
+            !hasRole(PROVIDER_ROLE, msg.sender)
+        ) revert OnlyStakerOrProvider(msg.sender);
     }
 }

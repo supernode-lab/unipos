@@ -22,6 +22,9 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
     error IllegalDealStatus(DealStatus);
     error TooMuchAmount();
     error InsufficientBalance(address sender, uint256 balance, uint256 needed);
+    error NotProvider();
+    error NotStaker();
+    error NotBeneficiary();
 
     struct StakeParam {
         IStakeCore stakecore;
@@ -65,6 +68,8 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
     error OnlyStakerOrProvider(address caller);
     error OnlyAdmin(address caller);
 
+    bytes32 public constant STAKECORE_ROLE=keccak256("STAKECORE");
+    bytes32 public constant BENEFICIARY_ROLE = keccak256("BENEFICIARY");
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
     IERC20 public immutable USDT;
     uint256 public immutable LOCK_PERIOD;
@@ -78,29 +83,27 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
 
     uint256 public withdrawableUsdt;
 
+    modifier onlyAdmin() {
+        _onlyAdmin();
+        _;
+    }
 
     modifier onlyStaker(){
-        if (msg.sender != staker) revert OnlyStaker(msg.sender);
+        _onlyStaker();
         _;
     }
 
     modifier onlyProvider(){
-        if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
+        _onlyProvider();
         _;
     }
 
     modifier onlyStakerOrProvider(){
-        if (msg .sender != staker &&
-            msg.sender != provider &&
-            !hasRole(PROVIDER_ROLE, msg.sender)
-        ) revert OnlyStakerOrProvider(msg.sender);
+        _onlyStakerOrProvider();
         _;
     }
 
-    modifier onlyAdmin() {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
-        _;
-    }
+
 
 
     constructor(address admin, address _usdt, address token, uint256 _lockPeriod)  UniversalToken(IERC20(token)){
@@ -140,8 +143,9 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
         if (targetUsdt == 0) revert InvalidParameter("targetUsdt");
         uint256 targetToken;
         for (uint256 i = 0; i < stakeParams.length; i++) {
-            if (stakeParams[i].beneficiary == address(0)) revert InvalidParameter("stakeParams.beneficiary");
-            if (address(stakeParams[i].stakecore) == address(0)) revert InvalidParameter("stakeParams.stakecore");
+            if (!isBeneficiary(stakeParams[i].beneficiary))revert InvalidParameter("stakeParams.beneficiary");
+            if (!isStakecore(address(stakeParams[i].stakecore))) revert InvalidParameter("stakeParams.stakecore");
+
             uint256 stakeAmount = stakeParams[i].stakeAmount;
             uint256 apyAmount = stakeParams[i].apyAmount;
             if (stakeAmount + apyAmount == 0) revert InvalidParameter("stakeParams.stakeAmount/apyAmount");
@@ -152,6 +156,7 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
                 uint256 minStakeAmount = stakeParams[i].stakecore.minStakeAmount();
                 if (minStakeAmount > stakeAmount) revert StakeAmountInsufficient(address(stakeParams[i].stakecore), stakeAmount);
             }
+
             targetToken += (stakeAmount + apyAmount);
         }
 
@@ -331,21 +336,47 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
         }
     }
 
+    function dealsLength() external view returns (uint256) {return deals.length;}
+
+    function getDeal(uint256 dealId) external view returns (Deal memory) {
+        if (dealId >= deals.length) revert InvalidDealId();
+        return deals[dealId];
+    }
+
     function revokeRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
         if (role == PROVIDER_ROLE && account == provider) revert ForbidRevokeMainProvider();
         _revokeRole(role, account);
     }
-
 
     function renounceRole(bytes32 role, address account) public override {
         if (role == PROVIDER_ROLE && account == provider) revert ForbidRevokeMainProvider();
         super.renounceRole(role, account);
     }
 
-    function dealsLength() external view returns (uint256) {return deals.length;}
+    function isStakecore(address addr) public view returns (bool){
+        return hasRole(STAKECORE_ROLE, addr);
+    }
 
-    function getDeal(uint256 dealId) external view returns (Deal memory) {
-        if (dealId >= deals.length) revert InvalidDealId();
-        return deals[dealId];
+    function isBeneficiary(address addr) public view returns (bool){
+        return hasRole(BENEFICIARY_ROLE, addr);
+    }
+
+    function _onlyAdmin() internal view{
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
+    }
+
+    function _onlyStaker() internal view{
+        if (msg.sender != staker) revert OnlyStaker(msg.sender);
+    }
+
+    function _onlyProvider() internal view{
+        if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
+    }
+
+    function _onlyStakerOrProvider() internal view{
+        if (msg .sender != staker &&
+        msg.sender != provider &&
+            !hasRole(PROVIDER_ROLE, msg.sender)
+        ) revert OnlyStakerOrProvider(msg.sender);
     }
 }
