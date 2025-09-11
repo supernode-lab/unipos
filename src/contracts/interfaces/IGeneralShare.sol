@@ -17,7 +17,7 @@ interface IGeneralShare is BaseError {
 
     event StakeRewardsClaimed(uint256 shareId, uint256 amount);
     event StakePrincipalClaimed(uint256 shareId, uint256 amount);
-    event ExcessCollected(uint256 amount);
+    event ExcessCollected(address erc20, uint256 amount);
 
     struct ShareholderInfo {
         address owner;

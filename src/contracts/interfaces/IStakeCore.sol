@@ -17,7 +17,7 @@ interface IStakeCore is BaseError {
     event RewardsWithdrawn(address  staker, uint256 amount, uint256 index);
     event SecurityDeposited(uint256 amount, uint256 totalSecurity);
     event SecurityWithdrawn(uint256 amount, uint256 remainingSecurity);
-    event ExcessCollected(uint256 extraToken);
+    event ExcessCollected(address erc20, uint256 extraToken);
 
     struct StakeInfo {
         address owner;

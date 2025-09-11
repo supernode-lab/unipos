@@ -6,12 +6,15 @@ import {IGeneralShare} from "../interfaces/IGeneralShare.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title POS Stake Core Contract
  * @notice
  */
 abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuard, AccessControl {
+    using SafeERC20 for IERC20;
+
     bytes32 public constant SHAREHOLDER_ROLE = keccak256("SHAREHOLDER");
 
     bool public immutable ENABLE_SHAREHOLDER_WHITE_LIST;
@@ -178,14 +181,21 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit PrincipalClaimed(msg.sender, shareId, withdrawablePrincipal);
     }
 
-    function collect() external onlyAdmin nonReentrant returns (uint256) {
+    function collect(IERC20 erc20) external onlyAdmin nonReentrant returns (uint256) {
+        if (erc20 != token()) {
+            uint256 _bal = erc20.balanceOf(address(this));
+            erc20.safeTransfer(msg.sender, _bal);
+            emit ExcessCollected(address(erc20),_bal);
+            return _bal;
+        }
+
 //  withdraw extra token from this contract
         uint256 bal = balance();
         uint256 lockedFunds = heldFunds;
         require(bal >= lockedFunds, "Not enough token");
         uint256 extraToken = bal - lockedFunds;
         _sendToken(msg.sender, extraToken);
-        emit ExcessCollected(extraToken);
+        emit ExcessCollected(address(erc20),extraToken);
         return extraToken;
     }
 
