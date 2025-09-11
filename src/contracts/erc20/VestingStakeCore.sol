@@ -16,6 +16,7 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
     // Events
     event Stake(address indexed staker, uint256 amount, uint256 startTime, uint256 lockPeriod);
     event RewardsClaimed(address indexed staker, uint256 amount, uint256 index);
+    event CollectExtra(uint256 extraToken);
 
     struct BeneficiaryInfo {
         address owner;
@@ -28,6 +29,7 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
     uint256 public immutable lockPeriod;
     uint256 public immutable minStakeAmount;
     uint256 public immutable installmentNum;
+    address public admin;
 
     // total user staked amount
     uint256 public totalClaimedRewards;
@@ -38,6 +40,11 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
     mapping(address => uint256[]) public userStakeIndexes; // 每个用户的质押记录
 
 
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Only admin can call this function");
+        _;
+    }
+
     function getStakeRecords(uint256 _index) external view returns (StakeInfo memory){
         return stakeRecords[_index];
     }
@@ -47,8 +54,10 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
     }
 
 
-    constructor(IERC20 _token, uint256 _lockPeriod, uint256 installmentCount, uint256 _minStakeAmount) {
+    constructor(address _admin, IERC20 _token, uint256 _lockPeriod, uint256 installmentCount, uint256 _minStakeAmount) {
+        require(address(_admin) != address(0), "Invalid admin address");
         require(address(_token) != address(0), "Invalid Token address");
+        admin=_admin;
         token = _token;
         lockPeriod = _lockPeriod;
         installmentNum = installmentCount;
@@ -136,5 +145,16 @@ contract VestingStakeCore is IStakeCore, ReentrancyGuard {
             stakeInfo[i - start] = stakeRecords[i];
         }
         return stakeInfo;
+    }
+
+    function collect() external onlyAdmin nonReentrant returns (uint256) {
+        uint256 bal = token.balanceOf(address(this));
+        uint256 netObligation = totalCollateral - totalClaimedRewards;
+
+        if (bal <= netObligation) revert( "No locked token");
+        uint256 extraToken = bal - netObligation;
+        token.safeTransfer(msg.sender,extraToken);
+        emit CollectExtra(extraToken);
+        return extraToken;
     }
 }
