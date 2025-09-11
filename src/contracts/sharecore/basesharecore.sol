@@ -183,19 +183,29 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
 
     function collect(IERC20 erc20) external onlyAdmin nonReentrant returns (uint256) {
         if (erc20 != token()) {
-            uint256 _bal = erc20.balanceOf(address(this));
-            erc20.safeTransfer(msg.sender, _bal);
-            emit ExcessCollected(address(erc20),_bal);
+            uint256 _bal;
+            if (address(erc20) == address(0)) {
+                _bal = address(this).balance;
+                if (_bal == 0) revert NoExcessTokens();
+                (bool success,) = payable(msg.sender).call{value: _bal}("");
+                require(success);
+            } else {
+                _bal = erc20.balanceOf(address(this));
+                if (_bal == 0) revert NoExcessTokens();
+                erc20.safeTransfer(msg.sender, _bal);
+            }
+
+            emit ExcessCollected(address(erc20), _bal);
             return _bal;
         }
 
 //  withdraw extra token from this contract
         uint256 bal = balance();
         uint256 lockedFunds = heldFunds;
-        require(bal >= lockedFunds, "Not enough token");
+        if (bal <= lockedFunds) revert NoExcessTokens();
         uint256 extraToken = bal - lockedFunds;
         _sendToken(msg.sender, extraToken);
-        emit ExcessCollected(address(erc20),extraToken);
+        emit ExcessCollected(address(erc20), extraToken);
         return extraToken;
     }
 

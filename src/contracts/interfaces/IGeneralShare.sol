@@ -8,6 +8,7 @@ interface IGeneralShare is BaseError {
     error StakeCoreAlreadySet();
     error AmountExceedsWithdrawable();
     error AmountExceedsBalance();
+    error NoExcessTokens();
 
     event RewardsAccrued(uint256 shareId, uint256 recycledT, uint256 recycledRewards);
     event Recycled(uint256 shareId, uint256 amount);
