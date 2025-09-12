@@ -22,9 +22,23 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
     error IllegalDealStatus(DealStatus);
     error TooMuchAmount();
     error InsufficientBalance(address sender, uint256 balance, uint256 needed);
-    error NotProvider();
-    error NotStaker();
-    error NotBeneficiary();
+    error ForbidRevokeMainProvider();
+    error OnlyStaker(address caller);
+    error OnlyProvider(address caller);
+    error OnlyStakerOrProvider(address caller);
+    error OnlyAdmin(address caller);
+    error NoExcessTokens();
+
+    event StakerInited(address);
+    event ProviderInited(address, address[]);
+    event DealCreated(uint256 dealId, uint256 targetUsdt, uint256 targetToken);
+    event DealUsdtPaid(uint256 dealId, uint256 amount);
+    event DealTokenPaid(uint256 dealId, uint256 amount);
+    event DealAborted(uint256 dealId, uint256 usdtAmount, uint256 tokenAmount);
+    event UsdtWithdrawn(uint256 amount);
+    event DealSettled(uint256 dealId, uint256 usedToken, uint256 usedUsdt, DealStatus status);
+    event ExcessCollected(address erc20, uint256 extraToken);
+
 
     struct StakeParam {
         IStakeCore stakecore;
@@ -53,22 +67,7 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
     }
 
 
-    event StakerInited(address);
-    event ProviderInited(address, address[]);
-    event DealCreated(uint256 dealId, uint256 targetUsdt, uint256 targetToken);
-    event DealUsdtPaid(uint256 dealId, uint256 amount);
-    event DealTokenPaid(uint256 dealId, uint256 amount);
-    event DealAborted(uint256 dealId, uint256 usdtAmount, uint256 tokenAmount);
-    event UsdtWithdrawn(uint256 amount);
-    event DealSettled(uint256 dealId, uint256 usedToken, uint256 usedUsdt, DealStatus status);
-
-    error ForbidRevokeMainProvider();
-    error OnlyStaker(address caller);
-    error OnlyProvider(address caller);
-    error OnlyStakerOrProvider(address caller);
-    error OnlyAdmin(address caller);
-
-    bytes32 public constant STAKECORE_ROLE=keccak256("STAKECORE");
+    bytes32 public constant STAKECORE_ROLE = keccak256("STAKECORE");
     bytes32 public constant BENEFICIARY_ROLE = keccak256("BENEFICIARY");
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
     IERC20 public immutable USDT;
@@ -143,7 +142,7 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
         if (targetUsdt == 0) revert InvalidParameter("targetUsdt");
         uint256 targetToken;
         for (uint256 i = 0; i < stakeParams.length; i++) {
-            if (!isBeneficiary(stakeParams[i].beneficiary))revert InvalidParameter("stakeParams.beneficiary");
+            if (!isBeneficiary(stakeParams[i].beneficiary)) revert InvalidParameter("stakeParams.beneficiary");
             if (!isStakecore(address(stakeParams[i].stakecore))) revert InvalidParameter("stakeParams.stakecore");
 
             uint256 stakeAmount = stakeParams[i].stakeAmount;
@@ -317,9 +316,7 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
         if (isNativeToken()) {
             stakecore.stake{value: amount}(owner, amount);
         } else {
-            bool ok0 = _TOKEN.approve(spender, 0);
-            bool ok1 = _TOKEN.approve(spender, amount);
-            require(ok0 && ok1, "approve fail");
+            _TOKEN.forceApprove(spender, amount);
             stakecore.stake(owner, amount);
         }
     }
@@ -329,9 +326,7 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
         if (isNativeToken()) {
             stakecore.depositSecurity{value: amount}(amount);
         } else {
-            bool ok0 = _TOKEN.approve(spender, 0);
-            bool ok1 = _TOKEN.approve(spender, amount);
-            require(ok0 && ok1, "approve fail");
+            _TOKEN.forceApprove(spender, amount);
             stakecore.depositSecurity(amount);
         }
     }
@@ -361,22 +356,52 @@ contract Matcher is UniversalToken, AccessControl, ReentrancyGuard {
         return hasRole(BENEFICIARY_ROLE, addr);
     }
 
-    function _onlyAdmin() internal view{
+    function _onlyAdmin() internal view {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
     }
 
-    function _onlyStaker() internal view{
+    function _onlyStaker() internal view {
         if (msg.sender != staker) revert OnlyStaker(msg.sender);
     }
 
-    function _onlyProvider() internal view{
+    function _onlyProvider() internal view {
         if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
     }
 
-    function _onlyStakerOrProvider() internal view{
+    function _onlyStakerOrProvider() internal view {
         if (msg .sender != staker &&
         msg.sender != provider &&
             !hasRole(PROVIDER_ROLE, msg.sender)
         ) revert OnlyStakerOrProvider(msg.sender);
+    }
+
+    function collect(IERC20 erc20) external onlyAdmin nonReentrant returns (uint256) {
+        uint256 bal;
+        uint256 heldToken;
+        if (erc20 == token()) {
+            bal = balance();
+            heldToken = lockedToken;
+        } else if (erc20 == USDT) {
+            bal = erc20.balanceOf(address(this));
+            heldToken = lockedUsdt + withdrawableUsdt;
+        } else if (address(erc20) == address(0)) {
+            bal = address(this).balance;
+            heldToken = 0;
+        } else {
+            bal = erc20.balanceOf(address(this));
+            heldToken = 0;
+        }
+
+        if (bal <= heldToken) revert NoExcessTokens();
+        uint256 extraToken = bal - heldToken;
+        if (address(erc20) == address(0)) {
+            (bool success,) = payable(msg.sender).call{value: extraToken}("");
+            require(success);
+        } else {
+            erc20.safeTransfer(msg.sender, extraToken);
+        }
+
+        emit ExcessCollected(address(erc20), extraToken);
+        return extraToken;
     }
 }

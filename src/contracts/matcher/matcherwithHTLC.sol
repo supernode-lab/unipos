@@ -28,6 +28,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     error OnlyProvider(address caller);
     error OnlyStakerOrProvider(address caller);
     error OnlyAdmin(address caller);
+    error NoExcessTokens();
 
     event Locked(
         bytes32 dealId,
@@ -45,6 +46,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     event DealCreated(uint256 dealId, uint256 targetToken);
     event DealSettled(uint256 dealId, uint256 usedToken);
     event DealFailed(uint256 dealId);
+    event ExcessCollected(address erc20, uint256 extraToken);
 
     struct StakeParam {
         IStakeCore stakecore;
@@ -77,13 +79,14 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         DealStatus status;
     }
 
-    bytes32 public constant STAKECORE_ROLE=keccak256("STAKECORE");
+    bytes32 public constant STAKECORE_ROLE = keccak256("STAKECORE");
     bytes32 public constant BENEFICIARY_ROLE = keccak256("BENEFICIARY");
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
 
     address public staker;
     address public provider;
 
+    uint256 public lockedToken;
     Deal[] private deals;
 
 // dealId => Swap
@@ -144,7 +147,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
     function newDeal(StakeParam[] calldata stakeParams) external nonReentrant onlyStakerOrProvider {
         uint256 targetToken;
         for (uint256 i = 0; i < stakeParams.length; i++) {
-            if (!isBeneficiary(stakeParams[i].beneficiary))revert InvalidParameter("stakeParams.beneficiary");
+            if (!isBeneficiary(stakeParams[i].beneficiary)) revert InvalidParameter("stakeParams.beneficiary");
             if (!isStakecore(address(stakeParams[i].stakecore))) revert InvalidParameter("stakeParams.stakecore");
 
             uint256 stakeAmount = stakeParams[i].stakeAmount;
@@ -207,6 +210,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
             refunded: false,
             preimage: 0x0
         });
+        lockedToken += amount;
 
         emit Locked(swapId, msg.sender, staker, address(token()), amount, timelock, hashlock);
         return swapId;
@@ -226,6 +230,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         try  this._stake(_dealId) {}catch{
             deal.status = DealStatus.Abort;
+            lockedToken -= deal.targetToken;
             emit DealFailed(_dealId);
             _sendToken(msg.sender, deal.targetToken);
         }
@@ -250,6 +255,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         if (deal.status != DealStatus.Pending) revert IllegalDealStatus(deal.status);
         s.refunded = true;
         deal.status = DealStatus.Abort;
+        lockedToken -= deal.targetToken;
         _sendToken(s.sender, s.amount);
         emit Refunded(dealId);
     }
@@ -277,6 +283,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         }
 
         deal.status = DealStatus.Success;
+        lockedToken -= deal.targetToken;
         emit DealSettled(dealId, deal.targetToken);
     }
 
@@ -327,22 +334,49 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         return hasRole(BENEFICIARY_ROLE, addr);
     }
 
-    function _onlyAdmin() internal view{
+    function _onlyAdmin() internal view {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyAdmin(msg.sender);
     }
 
-    function _onlyStaker() internal view{
+    function _onlyStaker() internal view {
         if (msg.sender != staker) revert OnlyStaker(msg.sender);
     }
 
-    function _onlyProvider() internal view{
+    function _onlyProvider() internal view {
         if (msg.sender != provider && !hasRole(PROVIDER_ROLE, msg.sender)) revert OnlyProvider(msg.sender);
     }
 
-    function _onlyStakerOrProvider() internal view{
+    function _onlyStakerOrProvider() internal view {
         if (msg .sender != staker &&
         msg.sender != provider &&
             !hasRole(PROVIDER_ROLE, msg.sender)
         ) revert OnlyStakerOrProvider(msg.sender);
+    }
+
+    function collect(IERC20 erc20) external onlyAdmin nonReentrant returns (uint256) {
+        uint256 bal;
+        uint256 heldToken;
+        if (erc20 == token()) {
+            bal = balance();
+            heldToken = lockedToken;
+        }else if (address(erc20) == address(0)) {
+            bal = address(this).balance;
+            heldToken = 0;
+        } else {
+            bal = erc20.balanceOf(address(this));
+            heldToken = 0;
+        }
+
+        if (bal <= heldToken) revert NoExcessTokens();
+        uint256 extraToken = bal - heldToken;
+        if (address(erc20) == address(0)) {
+            (bool success,) = payable(msg.sender).call{value: extraToken}("");
+            require(success);
+        } else {
+            erc20.safeTransfer(msg.sender, extraToken);
+        }
+
+        emit ExcessCollected(address(erc20), extraToken);
+        return extraToken;
     }
 }

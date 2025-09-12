@@ -182,29 +182,28 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
     }
 
     function collect(IERC20 erc20) external onlyAdmin nonReentrant returns (uint256) {
-        if (erc20 != token()) {
-            uint256 _bal;
-            if (address(erc20) == address(0)) {
-                _bal = address(this).balance;
-                if (_bal == 0) revert NoExcessTokens();
-                (bool success,) = payable(msg.sender).call{value: _bal}("");
-                require(success);
-            } else {
-                _bal = erc20.balanceOf(address(this));
-                if (_bal == 0) revert NoExcessTokens();
-                erc20.safeTransfer(msg.sender, _bal);
-            }
-
-            emit ExcessCollected(address(erc20), _bal);
-            return _bal;
+        uint256 bal;
+        uint256 heldToken;
+        if (erc20 == token()) {
+            bal = balance();
+            heldToken = heldFunds;
+        }else if (address(erc20) == address(0)) {
+            bal = address(this).balance;
+            heldToken = 0;
+        } else {
+            bal = erc20.balanceOf(address(this));
+            heldToken = 0;
         }
 
-//  withdraw extra token from this contract
-        uint256 bal = balance();
-        uint256 lockedFunds = heldFunds;
-        if (bal <= lockedFunds) revert NoExcessTokens();
-        uint256 extraToken = bal - lockedFunds;
-        _sendToken(msg.sender, extraToken);
+        if (bal <= heldToken) revert NoExcessTokens();
+        uint256 extraToken = bal - heldToken;
+        if (address(erc20) == address(0)) {
+            (bool success,) = payable(msg.sender).call{value: extraToken}("");
+            require(success);
+        } else {
+            erc20.safeTransfer(msg.sender, extraToken);
+        }
+
         emit ExcessCollected(address(erc20), extraToken);
         return extraToken;
     }
