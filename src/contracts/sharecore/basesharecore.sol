@@ -181,7 +181,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         emit PrincipalClaimed(msg.sender, shareId, withdrawablePrincipal);
     }
 
-    function collect(IERC20 erc20) external onlyAdmin nonReentrant returns (uint256) {
+    function collect(IERC20 erc20) external virtual onlyAdmin nonReentrant returns (uint256) {
         uint256 bal;
         uint256 heldToken;
         if (erc20 == token()) {

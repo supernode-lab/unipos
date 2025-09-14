@@ -17,11 +17,10 @@ contract Subscription is ShareCore, BaseCredential {
     using SafeERC20 for IERC20;
 
     // Events
-    event SubscribedByUSDT(address  shareholder, uint256 shareId, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
-    event SubscribedByToken(address  shareholder, uint256 shareId, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
-    event USDTWithdrawn(address  account, uint256 amount);
-    event TokenWithdrawn(address  account, uint256 amount);
-    event USDTCollected(uint256 amount);
+    event SubscribedByUSDT(address shareholder, uint256 shareId, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
+    event SubscribedByToken(address shareholder, uint256 shareId, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
+    event USDTWithdrawn(address account, uint256 amount);
+    event TokenWithdrawn(address account, uint256 amount);
 
     struct ShareholderFund {
         uint256 depositedToken;
@@ -150,14 +149,34 @@ contract Subscription is ShareCore, BaseCredential {
         shareInfo.grantedPrincipal += _grantedPrincipal;
     }
 
-    function collectUsdt() external onlyAdmin nonReentrant returns (uint256) {
-//  withdraw extra token from this contract
-        uint256 balance = USDT.balanceOf(address(this));
-        uint256 remain = depositedUsdt - withdrawnUsdt;
-        require(balance > remain, "Not enough token");
-        USDT.safeTransfer(msg.sender, balance - remain);
-        emit USDTCollected(balance - remain);
-        return balance - remain;
+    function collect(IERC20 erc20) external override onlyAdmin nonReentrant returns (uint256) {
+        uint256 bal;
+        uint256 heldToken;
+        if (erc20 == token()) {
+            bal = balance();
+            heldToken = heldFunds;
+        } else if (erc20 == USDT) {
+            bal = erc20.balanceOf(address(this));
+            heldToken = depositedUsdt - withdrawnUsdt;
+        } else if (address(erc20) == address(0)) {
+            bal = address(this).balance;
+            heldToken = 0;
+        } else {
+            bal = erc20.balanceOf(address(this));
+            heldToken = 0;
+        }
+
+        if (bal <= heldToken) revert NoExcessTokens();
+        uint256 extraToken = bal - heldToken;
+        if (address(erc20) == address(0)) {
+            (bool success,) = payable(msg.sender).call{value: extraToken}("");
+            require(success);
+        } else {
+            erc20.safeTransfer(msg.sender, extraToken);
+        }
+
+        emit ExcessCollected(address(erc20), extraToken);
+        return extraToken;
     }
 
     function getShareholderFund(address _shareholder, uint256 shareId) public view returns (ShareholderFund memory) {
