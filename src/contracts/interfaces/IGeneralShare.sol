@@ -12,7 +12,7 @@ interface IGeneralShare is BaseError {
 
     event RewardsAccrued(uint256 shareId, uint256 recycledT, uint256 recycledRewards);
     event Recycled(uint256 shareId, uint256 amount);
-    event ShareholderAdded(address  shareholder, uint256 shareId, uint256 startTime, uint256 grantedReward, uint256 grantedPrincipal);
+    event ShareholderAdded(address  shareholder, uint256 shareId, uint256 startTime, uint256 needtoRecycleReward, uint256 grantedReward, uint256 grantedPrincipal);
     event RewardsClaimed(address  shareholder, uint256 shareId, uint256 amount);
     event PrincipalClaimed(address  shareholder, uint256 shareId, uint256 amount);
 
@@ -36,7 +36,7 @@ interface IGeneralShare is BaseError {
     }
 
     struct ShareInfo {
-        bool  isSet;
+        bool isSet;
         uint256 startTime;
         uint256 recycledTime;
         uint256 endTime;

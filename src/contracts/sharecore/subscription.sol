@@ -17,8 +17,8 @@ contract Subscription is ShareCore, BaseCredential {
     using SafeERC20 for IERC20;
 
     // Events
-    event SubscribedByUSDT(address shareholder, uint256 shareId, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
-    event SubscribedByToken(address shareholder, uint256 shareId, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
+    event SubscribedByUSDT(address shareholder, uint256 shareId, uint256 needtoRecycleReward, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
+    event SubscribedByToken(address shareholder, uint256 shareId, uint256 needtoRecycleReward, uint256 grantedReward, uint256 grantedPrincipal, uint256 amount);
     event USDTWithdrawn(address account, uint256 amount);
     event TokenWithdrawn(address account, uint256 amount);
 
@@ -74,8 +74,7 @@ contract Subscription is ShareCore, BaseCredential {
 
         depositedUsdt += amount;
         USDT.safeTransferFrom(msg.sender, address(this), amount);
-        _addShareholder(_owner, _shareId, _grantedReward, _grantedPrincipal, 0, amount);
-        emit SubscribedByUSDT(_owner, _shareId, _grantedReward, _grantedPrincipal, amount);
+        _addShareholder(_owner, _shareId, _grantedReward, _grantedPrincipal, 0, amount, false);
     }
 
     function subscribeByToken(
@@ -95,8 +94,7 @@ contract Subscription is ShareCore, BaseCredential {
         depositedToken += amount;
         heldFunds += amount;
         _receiveToken(amount);
-        _addShareholder(_owner, _shareId, _grantedReward, _grantedPrincipal, amount, 0);
-        emit SubscribedByToken(_owner, _shareId, _grantedReward, _grantedPrincipal, amount);
+        _addShareholder(_owner, _shareId, _grantedReward, _grantedPrincipal, amount, 0, true);
     }
 
     function _addShareholder(
@@ -105,7 +103,9 @@ contract Subscription is ShareCore, BaseCredential {
         uint256 _grantedReward,
         uint256 _grantedPrincipal,
         uint256 _depositedToken,
-        uint256 _depositedUsdt) private {
+        uint256 _depositedUsdt,
+        bool byToken
+    ) private {
         ShareInfo storage shareInfo = shareInfos[_shareId];
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("grantedPrincipal");
 
@@ -147,6 +147,13 @@ contract Subscription is ShareCore, BaseCredential {
 
         shareInfo.grantedReward += _grantedReward;
         shareInfo.grantedPrincipal += _grantedPrincipal;
+
+
+        if (byToken) {
+            emit SubscribedByToken(_owner, _shareId, needtoRecycleReward, _grantedReward, _grantedPrincipal, _depositedToken);
+        } else {
+            emit SubscribedByUSDT(_owner, _shareId, needtoRecycleReward, _grantedReward, _grantedPrincipal, _depositedUsdt);
+        }
     }
 
     function collect(IERC20 erc20) external override onlyAdmin nonReentrant returns (uint256) {

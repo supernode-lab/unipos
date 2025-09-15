@@ -132,7 +132,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         shareInfo.grantedReward += _grantedReward;
         shareInfo.grantedPrincipal += _grantedPrincipal;
 
-        emit ShareholderAdded(_owner, shareId, _startTime, _grantedReward, _grantedPrincipal);
+        emit ShareholderAdded(_owner, shareId, _startTime, needtoRecycleReward, _grantedReward, _grantedPrincipal);
     }
 
 
@@ -187,7 +187,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         if (erc20 == token()) {
             bal = balance();
             heldToken = heldFunds;
-        }else if (address(erc20) == address(0)) {
+        } else if (address(erc20) == address(0)) {
             bal = address(this).balance;
             heldToken = 0;
         } else {
