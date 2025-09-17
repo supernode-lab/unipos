@@ -39,16 +39,19 @@ contract ShareCore is BaseShareCore {
         if (newN > 8) {
             newN = 8;
         }
+
+        uint256 cliff = IStakeCore(stakecore).CLIFF_PERIOD();
+
         uint256[] memory newShareIds = new uint256[](newN);
         uint256 length = curShareIdsLen + newN;
         for (uint256 i = curShareIdsLen; i < length; i++) {
             uint256 shareId = _shareIds[i];
             IStakeCore.StakeInfo memory stakeInfo = IStakeCore(stakecore).getStakeRecords(shareId);
-
+            uint256 startTime = stakeInfo.startTime + cliff;
             shareInfos[shareId] = ShareInfo({
                 isSet: true,
-                startTime: stakeInfo.startTime,
-                recycledTime: stakeInfo.startTime,
+                startTime: startTime,
+                recycledTime: startTime,
                 endTime: stakeInfo.startTime + stakeInfo.lockPeriod,
                 totalReward: stakeInfo.totalRewards,
                 claimedReward: 0,

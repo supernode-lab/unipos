@@ -5,8 +5,8 @@ import {UniversalToken} from "../../base/UniversalToken.sol";
 import {IGeneralShare} from "../interfaces/IGeneralShare.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title POS Stake Core Contract
@@ -81,7 +81,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
 
     function addShareholder(address _owner, uint256 shareId, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyAdmin nonReentrant {
         if (!shareInfos[shareId].isSet) revert InvalidShareId(shareId);
-        _addShareholder(_owner, shareId, shareInfos[shareId].startTime, _grantedReward, _grantedPrincipal);
+        _addShareholder(_owner, shareId, shareInfos[shareId].recycledTime, _grantedReward, _grantedPrincipal);
     }
 
     function addShareholderWithStartTime(address _owner, uint256 shareId, uint256 _startTime, uint256 _grantedReward, uint256 _grantedPrincipal) external virtual onlyAdmin nonReentrant {
@@ -100,10 +100,16 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         uint256 endTime = shareInfo.endTime;
 
         if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("grantedPrincipal");
-        if (_startTime < recycledTime || _startTime >= endTime) revert InvalidParameter("startTime");
+        if (_startTime < recycledTime || _startTime > endTime) revert InvalidParameter("startTime");
+        if (_startTime == endTime && _grantedReward != 0) revert InvalidParameter("grantedReward");
 
-        uint256 unrecycledReward = _calUnrecycledReward(_startTime, recycledTime, endTime, _grantedReward);
-        uint256 needtoRecycleReward = _calNeedToRecycleReward(_startTime, shareInfo.startTime, endTime, _grantedReward);
+        uint256 unrecycledReward = 0;
+        uint256 needtoRecycleReward = 0;
+        if (_grantedReward != 0) {
+            unrecycledReward = _calNeedToRecycleReward(_startTime, recycledTime, endTime, _grantedReward);
+            needtoRecycleReward = _calNeedToRecycleReward(_startTime, shareInfo.startTime, endTime, _grantedReward);
+        }
+
         if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward + unrecycledReward > shareInfo.totalReward) revert InvalidParameter("grantedReward");
         bytes32 holderkey = _getShareHolderKeyHash(_owner, shareId);
         ShareholderInfo storage shareholder = shareholdersInfos[holderkey];
@@ -239,10 +245,6 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         }
 
         return _shareholderGrantedPrincipal * shareInfos[shareId].claimedPrincipal / shareInfos[shareId].totalPrincipal;
-    }
-
-    function _calUnrecycledReward(uint256 startT, uint256 recycledTime, uint256 endTime, uint256 grantedReward) internal pure returns (uint256) {
-        return grantedReward * (startT - recycledTime) / (endTime - startT);
     }
 
     function _calNeedToRecycleReward(uint256 startT, uint256 startTime, uint256 endTime, uint256 grantedReward) internal pure returns (uint256){
