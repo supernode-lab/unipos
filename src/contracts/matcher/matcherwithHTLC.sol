@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {UniversalToken} from "../../base/UniversalToken.sol";
+import {BaseUniversalToken} from "../../base/BaseUniversalToken.sol";
+import {BaseError} from "../interfaces/BaseError.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
+contract MatcherWithHtlc is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseError {
     using SafeERC20 for IERC20;
     error InvalidDealId();
     error StakerAlreadyInited();
@@ -115,7 +116,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
 
 
 
-    constructor(address admin, address token)  UniversalToken(IERC20(token)){
+    constructor(address admin, address token)  BaseUniversalToken(IERC20(token)){
         if (admin == address(0)) revert InvalidParameter("admin");
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -293,7 +294,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         if (isNativeToken()) {
             stakecore.stake{value: amount}(owner, amount);
         } else {
-            _TOKEN.forceApprove(spender, amount);
+            token().forceApprove(spender, amount);
             stakecore.stake(owner, amount);
         }
     }
@@ -303,7 +304,7 @@ contract MatcherWithHtlc is UniversalToken, AccessControl, ReentrancyGuard {
         if (isNativeToken()) {
             stakecore.depositSecurity{value: amount}(amount);
         } else {
-            _TOKEN.forceApprove(spender, amount);
+            token().forceApprove(spender, amount);
             stakecore.depositSecurity(amount);
         }
     }

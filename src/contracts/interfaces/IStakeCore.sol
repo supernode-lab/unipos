@@ -46,4 +46,6 @@ interface IStakeCore is BaseError {
     function token() external returns (IERC20);
 
     function CLIFF_PERIOD() external returns(uint256);
+
+    function getSecurityDepositByCollateral(uint256 amount) external view returns (uint256);
 }

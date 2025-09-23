@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {UniversalToken} from "../../base/UniversalToken.sol";
+import {BaseUniversalToken} from "../../base/BaseUniversalToken.sol";
 import {IGeneralShare} from "../interfaces/IGeneralShare.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -12,7 +12,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @title POS Stake Core Contract
  * @notice
  */
-abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuard, AccessControl {
+abstract contract BaseShareCore is BaseUniversalToken, IGeneralShare, ReentrancyGuard, AccessControl {
     using SafeERC20 for IERC20;
 
     bytes32 public constant SHAREHOLDER_ROLE = keccak256("SHAREHOLDER");
@@ -31,7 +31,7 @@ abstract contract BaseShareCore is UniversalToken, IGeneralShare, ReentrancyGuar
         _;
     }
 
-    constructor(address admin, address _stakecore, IERC20 token, bool enableShareholderWhiteList) UniversalToken(token) {
+    constructor(address admin, address _stakecore, IERC20 token, bool enableShareholderWhiteList) BaseUniversalToken(token) {
         stakecore = _stakecore;
         ENABLE_SHAREHOLDER_WHITE_LIST = enableShareholderWhiteList;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);

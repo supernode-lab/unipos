@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {UniversalToken} from "../../base/UniversalToken.sol";
+import {BaseUniversalToken} from "../../base/BaseUniversalToken.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -12,7 +12,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @title POS Stake Core Contract
  * @notice
  */
-contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard {
+contract StakeCore is BaseUniversalToken, IStakeCore, AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
@@ -41,7 +41,7 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
     IStakeCore.StakeInfo[] private stakeRecords;
     mapping(address => uint256[]) private userStakeIndexes; // 每个用户的质押记录
 
-    constructor(address admin, address[] memory providers, IERC20 _token, uint256 lockPeriod, uint256 cliffPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount, bool enableStakerWhiteList, bool enableBeneficiaryWhiteList)UniversalToken(_token) {
+    constructor(address admin, address[] memory providers, IERC20 _token, uint256 lockPeriod, uint256 cliffPeriod, uint256 _apy, uint256 _installmentNum, uint256 _minStakeAmount, bool enableStakerWhiteList, bool enableBeneficiaryWhiteList)BaseUniversalToken(_token) {
         if (admin == address(0)) revert InvalidParameter("admin");
         if (providers.length == 0) revert InvalidParameter("providers");
         if (_installmentNum == 0) revert InvalidParameter("installmentNum");
@@ -253,8 +253,8 @@ contract StakeCore is UniversalToken, IStakeCore, AccessControl, ReentrancyGuard
         return userStakeIndexes[owner];
     }
 
-    function token() public view override(UniversalToken, IStakeCore) returns (IERC20){
-        return _TOKEN;
+    function token() public view override(BaseUniversalToken, IStakeCore) returns (IERC20){
+        return BaseUniversalToken.token();
     }
 
     function isAdmin(address addr) public view returns (bool){
