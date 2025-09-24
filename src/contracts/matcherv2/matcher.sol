@@ -7,6 +7,7 @@ import {BaseError} from "../interfaces/BaseError.sol";
 import {IStakeCore} from "../interfaces/IStakeCore.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -18,20 +19,21 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
     error StakeAmountTooLow();
     error InsufficientBalance(uint256 balance, uint256 needed);
     error NoExcessTokens();
-    error SecurityLocking();
+    error LiquidLocking();
 
     event UsdtWithdrawn(uint256 amount);
-    event SecurityDeposited(uint256 amount, uint256 totalSecurity);
-    event SecurityWithdrawn(uint256 amount, uint256 remainingSecurity);
+    event LiquidDeposited(uint256 amount, uint256 totalLiquid);
+    event LiquidWithdrawn(uint256 amount, uint256 remainingLiquid);
     event SubscribedByUSDT(uint256 usdtAmount, address[]owners, uint256 exchangedToken, uint256 vn);
     event SubscribedByToken(uint256 tokenAmount, address[]owners, uint256 vn);
 
+    event SubscriptionsUpdated(bool usdtEnabled, bool tokenEnabled);
     event StakeInfoUpdated(IStakeCore[]  stakecores, uint256[]  ratios, IStakeCore kpiStakecore, uint256 kpiRatio, uint256 idx);
-    event PriceUpdated(uint256 price, uint256 decimals);
+    event PriceUpdated(uint256 price);
     event BeneficiaryUpdated(address newBeneficiary);
     event MinSubscribeAmountUpdated(uint256 newMinSubscribeAmount);
     event ExcessCollected(address erc20, uint256 extraToken);
-    event SecurityLockPeriodUpdated(uint256 newSecurityLockPeriod);
+    event LiquidLockPeriodUpdated(uint256 newLiquidLockPeriod);
 
     struct StakeInfo {
         IStakeCore[] stakes;
@@ -42,17 +44,22 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
 
     struct PriceInfo {
         uint256 price;
-        uint8 decimals;
     }
 
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
-    uint256 public constant PRECISION = 1e18;
+    uint8 public constant PRECISION = 1e18;
+    uint8 private immutable TOKEN_DECIMALS;
     IERC20 public immutable USDT;
+    uint8 private immutable USDT_DECIMALS;
 
-    uint256 public  SECURITY_LOCK_PERIOD;
-    uint256 public securityUnlockTime;
+    bool public usdtSubscriptionEnabled;
+    bool public tokenSubscriptionEnabled;
 
-    uint256 public totalSecurity;
+    uint256 public LIQUID_LOCK_PERIOD;
+    uint256 public liquidUnlockTime;
+
+
+    uint256 public totalLiquid;
     uint256 public deposited;
     uint256 public exchanged;
 
@@ -70,13 +77,25 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         _;
     }
 
+
     modifier  onlyProvider(){
         _checkRole(PROVIDER_ROLE);
         _;
     }
 
 
-    constructor(address admin, address provider, address _beneficiary, address usdt, address token, uint256 securityLockPeriod, uint256 _minSubscribeAmount, uint256 tokenPrice, uint8 priceDecimals, IStakeCore[] memory stakecores, uint256[]memory ratios, IStakeCore kpiStakecore, uint256 kpiRatio)  BaseUniversalToken(IERC20(token)){
+    constructor(
+        address admin,
+        address provider,
+        address _beneficiary,
+        address usdt,
+        address token,
+        uint256 liquidLockPeriod,
+        uint256 _minSubscribeAmount,
+        uint256 tokenPrice,
+        bool _usdtSubscriptionEnabled,
+        bool _tokenSubscriptionEnabled
+    )  BaseUniversalToken(IERC20(token)){
         if (admin == address(0)) revert InvalidParameter("admin");
         if (provider == address(0)) revert InvalidParameter("provider");
         if (_beneficiary == address(0)) revert InvalidParameter("beneficiary");
@@ -87,12 +106,16 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         _grantRole(PROVIDER_ROLE, provider);
 
         beneficiary = _beneficiary;
+        TOKEN_DECIMALS = IERC20Metadata(token).decimals();
         USDT = IERC20(usdt);
-        SECURITY_LOCK_PERIOD = securityLockPeriod;
+        USDT_DECIMALS = IERC20Metadata(usdt).decimals();
+
+        usdtSubscriptionEnabled = _usdtSubscriptionEnabled;
+        tokenSubscriptionEnabled = _tokenSubscriptionEnabled;
+        LIQUID_LOCK_PERIOD = liquidLockPeriod;
         minSubscribeAmount = _minSubscribeAmount;
 
-        _setPrice(tokenPrice, priceDecimals);
-        _setStakeInfo(stakecores, ratios, kpiStakecore, kpiRatio);
+        _setPrice(tokenPrice);
     }
 
     function withdrawUsdt(uint256 amount) external onlyProvider nonReentrant {
@@ -103,27 +126,29 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         emit UsdtWithdrawn(amount);
     }
 
-    function depositSecurity(uint256 amount) external payable onlyProvider nonReentrant {
-        totalSecurity += amount;
-        securityUnlockTime = block.timestamp + SECURITY_LOCK_PERIOD;
+    function depositLiquid(uint256 amount) external payable onlyProvider nonReentrant {
+        totalLiquid += amount;
+        liquidUnlockTime = block.timestamp + LIQUID_LOCK_PERIOD;
         _receiveToken(amount);
-        emit SecurityDeposited(amount, totalSecurity);
+        emit LiquidDeposited(amount, totalLiquid);
     }
 
-    function withdrawSecurity(uint256 amount) external onlyProvider nonReentrant {
-        if (block.timestamp < securityUnlockTime) revert SecurityLocking();
-        uint256 ts = totalSecurity;
+    function withdrawLiquid(uint256 amount) external onlyProvider nonReentrant {
+        if (block.timestamp < liquidUnlockTime) revert LiquidLocking();
+        uint256 ts = totalLiquid;
         uint256 tr = deposited + exchanged;
         if (ts <= tr) revert InsufficientBalance(0, amount);
         uint256 available = ts - tr;
         if (available < amount) revert InsufficientBalance(available, amount);
         ts -= amount;
-        totalSecurity = ts;
+        totalLiquid = ts;
         _sendToken(msg.sender, amount);
-        emit SecurityWithdrawn(amount, ts);
+        emit LiquidWithdrawn(amount, ts);
     }
 
     function subscribeByUsdt(uint256 cost, address[] memory owners) public nonReentrant {
+        if (!usdtSubscriptionEnabled) revert Forbid();
+
         (uint256 price,uint8 decimals) = getPrice();
         uint256 tokenAmount = cost * (10 ** decimals) / price;
         uint256 needUsdtAmount = tokenAmount * price / (10 ** decimals);
@@ -133,7 +158,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         uint256 received = afterBal - beforeBal;
         if (received != needUsdtAmount) revert LibUniversalToken.ERC20ReceiveMismatch(needUsdtAmount, received);
 
-        if (tokenAmount + deposited + exchanged > totalSecurity) revert InsufficientFunds();
+        if (tokenAmount + deposited + exchanged > totalLiquid) revert InsufficientFunds();
 
         exchanged += tokenAmount;
         totalUsdt += needUsdtAmount;
@@ -143,6 +168,8 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
     }
 
     function subscribeByToken(uint256 amount, address[] calldata owners) public payable nonReentrant {
+        if (!tokenSubscriptionEnabled) revert Forbid();
+
         _receiveToken(amount);
         uint256 vn = _stake(amount, owners);
         emit SubscribedByToken(amount, owners, vn);
@@ -169,21 +196,21 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
                 principal = amount * stakeInfo.ratios[i] / PRECISION;
             }
 
-            uint256 reward = stakeInfo.stakes[i].getSecurityDepositByCollateral(principal);
+            uint256 reward = stakeInfo.stakes[i].getLiquidDepositByCollateral(principal);
             principals[i] = principal;
             accPrincipal += principal;
             rewards[i] = reward;
             accRewards += reward;
         }
 
-        if (accRewards + deposited + exchanged > totalSecurity) revert InsufficientFunds();
+        if (accRewards + deposited + exchanged > totalLiquid) revert InsufficientFunds();
 
         for (uint256 i = 0; i < stakesLen; i++) {
             IStakeCore stake = stakeInfo.stakes[i];
             uint256 reward = rewards[i];
             if (reward != 0) {
                 token().forceApprove(address(stake), reward);
-                stake.depositSecurity(reward);
+                stake.depositLiquid(reward);
             }
 
             token().forceApprove(address(stake), principals[i]);
@@ -208,9 +235,16 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         revert Forbid();
     }
 
-    function setSecurityLockPeriod(uint256 newSecurityLockPeriod) external onlyAdmin {
-        SECURITY_LOCK_PERIOD = newSecurityLockPeriod;
-        emit SecurityLockPeriodUpdated(newSecurityLockPeriod);
+
+    function setSubscriptions(bool usdtEnabled, bool tokenEnabled) external onlyAdmin {
+        usdtSubscriptionEnabled = usdtEnabled;
+        tokenSubscriptionEnabled = tokenEnabled;
+        emit SubscriptionsUpdated(usdtEnabled, tokenEnabled);
+    }
+
+    function setLiquidLockPeriod(uint256 newLiquidLockPeriod) external onlyAdmin {
+        LIQUID_LOCK_PERIOD = newLiquidLockPeriod;
+        emit LiquidLockPeriodUpdated(newLiquidLockPeriod);
     }
 
     function setMinSubscribeAmount(uint256 amount) external onlyAdmin {
@@ -223,16 +257,14 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         emit BeneficiaryUpdated(newBeneficiary);
     }
 
-    function setPrice(uint256 price, uint8 decimals) external onlyAdmin {
-        _setPrice(price, decimals);
-        emit PriceUpdated(price, decimals);
+    function setPrice(uint256 price) external onlyAdmin {
+        _setPrice(price);
+        emit PriceUpdated(price);
     }
 
-    function _setPrice(uint256 price, uint8 decimals) internal {
+    function _setPrice(uint256 price) internal {
         if (price == 0) revert InvalidParameter("price");
-        if (decimals > 24) revert InvalidParameter("decimals");
         priceInfo.price = price;
-        priceInfo.decimals = decimals;
     }
 
     function setStakeInfo(IStakeCore[] memory stakecores, uint256[] memory ratios, IStakeCore kpiStakecore, uint256 kpiRatio) external onlyAdmin {
@@ -269,7 +301,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
 
 
     function getPrice() public view returns (uint256, uint8){
-        return (priceInfo.price, priceInfo.decimals);
+        return (priceInfo.price, TOKEN_DECIMALS - USDT_DECIMALS + 18);
     }
 
     function getStakeInfo() public view returns (StakeInfo memory stakeInfo, uint256 vn){
@@ -291,7 +323,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         uint256 heldToken;
         if (erc20 == token()) {
             bal = balance();
-            heldToken = totalSecurity - exchanged - deposited;
+            heldToken = totalLiquid - exchanged - deposited;
         } else if (erc20 == USDT) {
             bal = erc20.balanceOf(address(this));
             heldToken = totalUsdt - withdrawnUsdt;
