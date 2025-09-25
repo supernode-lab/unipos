@@ -47,7 +47,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
     }
 
     bytes32 public constant PROVIDER_ROLE = keccak256("PROVIDER");
-    uint8 public constant PRECISION = 1e18;
+    uint256 public constant PRECISION = 1e18;
     uint8 private immutable TOKEN_DECIMALS;
     IERC20 public immutable USDT;
     uint8 private immutable USDT_DECIMALS;
@@ -178,7 +178,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
     function _stake(uint256 amount, address[] memory owners) internal returns (uint256){
         if (amount < minSubscribeAmount) revert StakeAmountTooLow();
 
-        (StakeInfo memory stakeInfo,uint256 vn) = getStakeInfo();
+        (StakeInfo memory stakeInfo, uint256 vn) = getStakeInfo();
         uint256 stakesLen = stakeInfo.stakes.length;
         if (owners.length != stakesLen) revert InvalidParameter("owner");
 
@@ -196,7 +196,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
                 principal = amount * stakeInfo.ratios[i] / PRECISION;
             }
 
-            uint256 reward = stakeInfo.stakes[i].getLiquidDepositByCollateral(principal);
+            uint256 reward = stakeInfo.stakes[i].getSecurityDepositByCollateral(principal);
             principals[i] = principal;
             accPrincipal += principal;
             rewards[i] = reward;
@@ -210,7 +210,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
             uint256 reward = rewards[i];
             if (reward != 0) {
                 token().forceApprove(address(stake), reward);
-                stake.depositLiquid(reward);
+                stake.depositSecurity(reward);
             }
 
             token().forceApprove(address(stake), principals[i]);
