@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {BaseUniversalToken} from "../../base/BaseUniversalToken.sol";
+import {BaseUniversalToken} from "../../base/baseUniversalToken.sol";
 import {IGeneralShare} from "../interfaces/IGeneralShare.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -99,9 +99,9 @@ abstract contract BaseShareCore is BaseUniversalToken, IGeneralShare, Reentrancy
         uint256 recycledTime = shareInfo.recycledTime;
         uint256 endTime = shareInfo.endTime;
 
-        if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("grantedPrincipal");
+        if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InsufficientPrincipal();
         if (_startTime < recycledTime || _startTime > endTime) revert InvalidParameter("startTime");
-        if (_startTime == endTime && _grantedReward != 0) revert InvalidParameter("grantedReward");
+        if (_startTime == endTime && _grantedReward != 0) revert InsufficientRewards();
 
         uint256 unrecycledReward = 0;
         uint256 needtoRecycleReward = 0;
@@ -141,16 +141,63 @@ abstract contract BaseShareCore is BaseUniversalToken, IGeneralShare, Reentrancy
         emit ShareholderAdded(_owner, shareId, _startTime, needtoRecycleReward, _grantedReward, _grantedPrincipal);
     }
 
+    function share(uint256 shareId, address newOwner, uint256 grantedReward, uint256 grantedPrincipal) external {
+        if (grantedReward == 0 && grantedPrincipal == 0) revert InvalidParameter("grantedReward&grantedPrincipal");
+        if (ENABLE_SHAREHOLDER_WHITE_LIST) {
+            _checkRole(SHAREHOLDER_ROLE, newOwner);
+        }
+
+        bytes32 holderkey = _getShareHolderKeyHash(msg.sender, shareId);
+        ShareholderInfo memory shareholderInfo = shareholdersInfos[holderkey];
+        if (shareholderInfo.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
+
+        if (grantedReward + shareholderInfo.withdrawnReward > shareholderInfo.grantedReward) revert  InsufficientRewards();
+        if (grantedPrincipal + shareholderInfo.withdrawnPrincipal > shareholderInfo.grantedPrincipal) revert  InsufficientPrincipal();
+
+        uint256 preRecycledReward = 0;
+        if (shareholderInfo.grantedReward != 0) {
+            preRecycledReward = grantedReward * shareholderInfo.preRecycledReward / shareholderInfo.grantedReward;
+        }
+
+        shareholdersInfos[holderkey].grantedReward = shareholderInfo.grantedReward - grantedReward;
+        shareholdersInfos[holderkey].grantedPrincipal = shareholderInfo.grantedPrincipal - grantedPrincipal;
+        shareholdersInfos[holderkey].preRecycledReward = shareholderInfo.preRecycledReward - preRecycledReward;
+
+        bytes32 newholderkey = _getShareHolderKeyHash(newOwner, shareId);
+        ShareholderInfo storage newShareholder = shareholdersInfos[newholderkey];
+        if (newShareholder.owner == address(0)) {
+            shareholders.push(ShareHolderKey({
+                owner: newOwner,
+                shareId: shareId
+            }));
+
+            shareholdersInfos[newholderkey] = ShareholderInfo({
+                owner: newOwner,
+                shareId: shareId,
+                preRecycledReward: preRecycledReward,
+                grantedReward: grantedReward,
+                withdrawnReward: 0,
+                grantedPrincipal: grantedPrincipal,
+                withdrawnPrincipal: 0
+            });
+        } else {
+            newShareholder.preRecycledReward += preRecycledReward;
+            newShareholder.grantedReward += grantedReward;
+            newShareholder.grantedPrincipal += grantedPrincipal;
+        }
+
+        emit ShareholderShared(msg.sender, shareId, newOwner, preRecycledReward, grantedReward, grantedPrincipal);
+    }
 
     function withdrawRewards(uint256 shareId) external nonReentrant {
         ShareInfo storage shareInfo = shareInfos[shareId];
         if (!shareInfo.isSet) revert InvalidShareId(shareId);
 
-        ShareholderInfo storage info = shareholdersInfos[_getShareHolderKeyHash(msg.sender, shareId)];
-        if (info.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
-        uint256 totalUnlockedReward = _calculateShareholderRewards(info, shareId);
-        if (totalUnlockedReward <= info.withdrawnReward) revert AmountExceedsWithdrawable();
-        uint256 withdrawableReward = totalUnlockedReward - info.withdrawnReward;
+        ShareholderInfo storage shareholderInfo = shareholdersInfos[_getShareHolderKeyHash(msg.sender, shareId)];
+        if (shareholderInfo.owner != msg.sender) revert UnauthorizedCaller(msg.sender);
+        uint256 totalUnlockedReward = _calculateShareholderRewards(shareholderInfo, shareId);
+        if (totalUnlockedReward <= shareholderInfo.withdrawnReward) revert AmountExceedsWithdrawable();
+        uint256 withdrawableReward = totalUnlockedReward - shareholderInfo.withdrawnReward;
 
         uint256 balanceReward = shareInfo.claimedReward - shareInfo.withdrawnReward;
         if (balanceReward == 0) revert AmountExceedsBalance();
@@ -158,7 +205,7 @@ abstract contract BaseShareCore is BaseUniversalToken, IGeneralShare, Reentrancy
             withdrawableReward = balanceReward;
         }
 
-        info.withdrawnReward += withdrawableReward;
+        shareholderInfo.withdrawnReward += withdrawableReward;
         shareInfo.withdrawnReward += withdrawableReward;
         heldFunds -= withdrawableReward;
         _sendToken(msg.sender, withdrawableReward);
