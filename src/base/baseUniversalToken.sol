@@ -39,4 +39,8 @@ abstract contract BaseUniversalToken {
     function balance() public view returns (uint256){
         return _TOKEN.balanceOf(address(this));
     }
+
+    function decimals() public view returns (uint8){
+        return _TOKEN.decimals();
+    }
 }

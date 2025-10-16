@@ -106,7 +106,7 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
         _grantRole(PROVIDER_ROLE, provider);
 
         beneficiary = _beneficiary;
-        TOKEN_DECIMALS = IERC20Metadata(token).decimals();
+        TOKEN_DECIMALS = decimals();
         USDT = IERC20(usdt);
         USDT_DECIMALS = IERC20Metadata(usdt).decimals();
 

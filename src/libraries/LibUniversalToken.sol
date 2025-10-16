@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {UniversalToken} from "../Types/Structs/UniversalToken.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 library LibUniversalToken {
     using SafeERC20 for IERC20;
@@ -49,6 +50,20 @@ library LibUniversalToken {
             return account.balance;
         } else {
             return IERC20(UniversalToken.unwrap(uToken)).balanceOf(account);
+        }
+    }
+
+    function decimals(UniversalToken uToken) internal view returns (uint8){
+        if (isNativeToken(uToken)) {
+            uint256 one = 1 ether;
+            uint8 _decimals = 0;
+            while (one > 1) {
+                one /= 10;
+                _decimals++;
+            }
+            return _decimals;
+        } else {
+            return IERC20Metadata(UniversalToken.unwrap(uToken)).decimals();
         }
     }
 }
