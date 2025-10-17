@@ -209,23 +209,40 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
             IStakeCore stake = stakeInfo.stakes[i];
             uint256 reward = rewards[i];
             if (reward != 0) {
-                token().forceApprove(address(stake), reward);
-                stake.depositSecurity(reward);
+                _callStakecoreDepositSecurity(stake, reward);
             }
 
-            token().forceApprove(address(stake), principals[i]);
-            stake.stake(owners[i], principals[i]);
+            _callStakecoreStake(stake, owners[i], principals[i]);
         }
 
         if (kpiRewards != 0) {
-            token().forceApprove(address(stakeInfo.kpiStake), kpiRewards);
-            stakeInfo.kpiStake.stake(beneficiary, kpiRewards);
+            _callStakecoreStake(stakeInfo.kpiStake, beneficiary, kpiRewards);
         }
 
         deposited += accRewards;
         return vn;
     }
 
+
+    function _callStakecoreStake(IStakeCore stakecore, address owner, uint256 amount) private {
+        address spender = address(stakecore);
+        if (isNativeToken()) {
+            stakecore.stake{value: amount}(owner, amount);
+        } else {
+            token().forceApprove(spender, amount);
+            stakecore.stake(owner, amount);
+        }
+    }
+
+    function _callStakecoreDepositSecurity(IStakeCore stakecore, uint256 amount) private {
+        address spender = address(stakecore);
+        if (isNativeToken()) {
+            stakecore.depositSecurity{value: amount}(amount);
+        } else {
+            token().forceApprove(spender, amount);
+            stakecore.depositSecurity(amount);
+        }
+    }
 
     function revokeRole(bytes32 role, address account) public override onlyRole(getRoleAdmin(role)) {
         _revokeRole(role, account);
@@ -234,7 +251,6 @@ contract Matcher is BaseUniversalToken, AccessControl, ReentrancyGuard, BaseErro
     function renounceRole(bytes32, address) public pure override {
         revert Forbid();
     }
-
 
     function setSubscriptions(bool usdtEnabled, bool tokenEnabled) external onlyAdmin {
         usdtSubscriptionEnabled = usdtEnabled;
