@@ -31,20 +31,33 @@ abstract contract BaseCredential is AccessControl {
         _;
     }
 
+    function addGovernor(address account) external {
+        AccessControl.grantRole(GOVERNOR_ROLE, account);
+    }
+
+    function removeGovernor(address account) external {
+        require(msg.sender!=account,"disable to remove self");
+        AccessControl.revokeRole(GOVERNOR_ROLE, account);
+    }
+
+    function isGovernor(address account) public view returns (bool) {
+        return AccessControl.hasRole(GOVERNOR_ROLE, account);
+    }
+
     function addValidator(address account) external {
-        grantRole(VALIDATOR_ROLE, account);
+        AccessControl.grantRole(VALIDATOR_ROLE, account);
     }
 
     function removeValidator(address account) external {
-        revokeRole(VALIDATOR_ROLE, account);
+        AccessControl.revokeRole(VALIDATOR_ROLE, account);
     }
 
     function requireValidator(address account) public view {
-        require(hasRole(VALIDATOR_ROLE, account), "Validator only");
+        require(AccessControl.hasRole(VALIDATOR_ROLE, account), "Validator only");
     }
 
     function isValidator(address account) public view returns (bool) {
-        return hasRole(VALIDATOR_ROLE, account);
+        return AccessControl.hasRole(VALIDATOR_ROLE, account);
     }
 
     function getRequiredValidatorSignatures()
