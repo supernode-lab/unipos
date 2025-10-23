@@ -107,13 +107,18 @@ contract Subscription is ShareCore, BaseCredential {
         bool byToken
     ) private {
         ShareInfo storage shareInfo = shareInfos[_shareId];
-        if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InvalidParameter("grantedPrincipal");
+        if (!shareInfo.isSet) revert InvalidShareId(_shareId);
+        if (shareInfo.grantedPrincipal + _grantedPrincipal > shareInfo.totalPrincipal) revert InsufficientPrincipal();
 
         uint256 recycledTime = shareInfo.recycledTime;
         uint256 endTime = shareInfo.endTime;
-        uint256 needtoRecycleReward = _calNeedToRecycleReward(recycledTime, shareInfo.startTime, endTime, _grantedReward);
-        if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward > shareInfo.totalReward) revert InvalidParameter("grantedReward");
 
+        uint256 needtoRecycleReward = 0;
+        if (_grantedReward != 0) {
+            needtoRecycleReward = _calNeedToRecycleReward(recycledTime, shareInfo.startTime, endTime, _grantedReward);
+        }
+
+        if (shareInfo.grantedReward + shareInfo.totalRecycledReward + _grantedReward > shareInfo.totalReward) revert InvalidParameter("grantedReward");
         bytes32 holderkey = _getShareHolderKeyHash(_owner, _shareId);
         ShareholderInfo storage shareholder = shareholdersInfos[holderkey];
         if (shareholder.owner == address(0)) {
@@ -147,7 +152,6 @@ contract Subscription is ShareCore, BaseCredential {
 
         shareInfo.grantedReward += _grantedReward;
         shareInfo.grantedPrincipal += _grantedPrincipal;
-
 
         if (byToken) {
             emit SubscribedByToken(_owner, _shareId, needtoRecycleReward, _grantedReward, _grantedPrincipal, _depositedToken);
