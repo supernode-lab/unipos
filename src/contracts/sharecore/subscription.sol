@@ -85,7 +85,7 @@ contract Subscription is ShareCore, BaseCredential {
         uint256 _grantedPrincipal,
         SignedCredential calldata sc
     )
-    validateAndBurnCred(sc, abi.encode(_owner, _shareId, amount, _grantedReward, _grantedPrincipal)) nonReentrant external {
+    validateAndBurnCred(sc, abi.encode(_owner, _shareId, amount, _grantedReward, _grantedPrincipal)) nonReentrant external payable {
         if (!shareInfos[_shareId].isSet) revert InvalidShareId(_shareId);
         if (ENABLE_SHAREHOLDER_WHITE_LIST) {
             _checkRole(SHAREHOLDER_ROLE, _owner);
